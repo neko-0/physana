@@ -11,11 +11,12 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-authors = [{ name = "Yuzhan Zhao" }, email="yuzhan.zhao@cern.ch"]name = "physana"
+name = "physana"
 dynamic = ["version", "readme"]
 description = "Python tools for analyzing Ntuple data"
 license = { text = "Apache License 2.0" }
 requires-python = ">=3.8, <3.14"
+authors = [{ name = "Yuzhan Zhao" }, { email = "yuzhan.zhao@cern.ch" }]
 maintainers = [{ name = "Yuzhan Zhao", email = "yuzhan.physics@gmail.com" }]
 keywords = ["physics", "ntuples", "analysis"]
 classifiers = [
