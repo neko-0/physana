@@ -1,0 +1,4 @@
+include README.md
+
+# fastentrypoints for setup
+include fastentrypoints.py

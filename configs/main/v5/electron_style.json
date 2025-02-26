@@ -1,0 +1,372 @@
+{
+    "electron_inclusive_truth_nTruthJet30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_truth_wTruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_truth_HtTruth30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_truth_jet1TruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 3.5
+    },
+    "electron_inclusive_truth_metTruth": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_truth_nTruthBJet30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_truth_DeltaRTruthLepJetClosest100": {
+        "log": false,
+        "minMain": 0,
+        "maxMain": 700.0,
+        "minRatio": 0.0,
+        "maxRatio": 2.2,
+        "yaxis" : "d#sigma/d(#DeltaR) [fb]"
+    },
+    "electron_inclusive_2j_truth_mtTruth": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_jet2TruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_lep1TruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_lep1TruthEta": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_nTruthJet30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_wTruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_HtTruth30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_mjjTruth": {
+        "log": true,
+        "minMain": 0.0005,
+        "maxMain": 30.0,
+        "minRatio": 0,
+        "maxRatio": 3.0,
+        "yaxis" : "d#sigma/d(m_{jj}) [fb/GeV]"
+    },
+    "electron_inclusive_2j_truth_jet1TruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_metTruth": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_nTruthBJet30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_DeltaPhiTruthWJetClosest30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_DeltaPhiTruthWJetClosest100": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_DeltaRTruthLepJetClosest100": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_inclusive_2j_truth_DeltaRTruthLepJetClosest30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_collinear_truth_mtTruth": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_collinear_truth_jet2TruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_collinear_truth_lep1TruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_collinear_truth_lep1TruthEta": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_collinear_truth_nTruthJet30": {
+        "log": true,
+        "minMain": 0.13,
+        "maxMain": 100000.0,
+        "minRatio": 0,
+        "maxRatio": 2.8,
+        "yaxis" : "#sigma(W #rightarrow l#nu + N jets) [fb] "
+    },
+    "electron_collinear_truth_wTruthPt": {
+        "log": true,
+        "minMain": 0.0005,
+        "maxMain": 500.0,
+        "minRatio": 0.2,
+        "maxRatio": 1.8,
+        "yaxis" : "d#sigma/d(p_{T}^{l#nu}) [fb/GeV]"
+    },
+    "electron_collinear_truth_HtTruth30": {
+        "log": true,
+        "minMain": 0.0009,
+        "maxMain": 90.0,
+        "minRatio": 0,
+        "maxRatio": 2.2,
+        "yaxis" : "d#sigma/d(H_{T}) [fb/GeV]"
+    },
+    "electron_collinear_truth_mjjTruth": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_collinear_truth_jet1TruthPt": {
+        "log": true,
+        "minMain": 0.0025,
+        "maxMain": 500.0,
+        "minRatio": 0,
+        "maxRatio": 3.5,
+        "yaxis" : "d#sigma/d(p_{T}^{jet}) [fb/GeV]"
+    },
+    "electron_collinear_truth_metTruth": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_collinear_truth_nTruthBJet30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_collinear_truth_DeltaPhiTruthWJetClosest30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_collinear_truth_DeltaPhiTruthWJetClosest100": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_collinear_truth_DeltaRTruthLepJetClosest100": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_collinear_truth_DeltaRTruthLepJetClosest30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_mtTruth": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_jet2TruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_lep1TruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_lep1TruthEta": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_nTruthJet30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_wTruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_HtTruth30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_mjjTruth": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_jet1TruthPt": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_metTruth": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_nTruthBJet30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_DeltaPhiTruthWJetClosest30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_DeltaPhiTruthWJetClosest100": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_DeltaRTruthLepJetClosest100": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    },
+    "electron_backtoback_truth_DeltaRTruthLepJetClosest30": {
+        "log": true,
+        "minMain": 0.001,
+        "maxMain": 1000.0,
+        "minRatio": 0,
+        "maxRatio": 2
+    }
+}

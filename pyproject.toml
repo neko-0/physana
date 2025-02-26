@@ -1,0 +1,26 @@
+[build-system]
+# Minimum requirements for the build system to execute.
+requires = ["wheel", "setuptools>=30.3.0", "attrs>=17.1", "setuptools_scm", "fastentrypoints"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 88
+target-version = ["py38", "py39", "py310", "py311"]
+skip-string-normalization = true
+include = '\.pyi?$'
+force-exclude = '''
+/(
+    \.git
+  | .eggs
+  | \.mypy_cache
+  | \.venv
+  | _build
+  | build
+  | dist
+  | RooUnfold
+  | configs
+  | example
+  | docs
+  | data
+)/
+'''
