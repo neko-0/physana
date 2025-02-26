@@ -9,8 +9,8 @@ import pandas
 import numpy as np
 import copy
 
-from .configMgr import ConfigMgr
-from .core import Histogram
+from .configs import ConfigMgr
+from .histo import Histogram
 from .strategies.unfolding.utils import get_xsec_uncert
 
 logging.basicConfig()

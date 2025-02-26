@@ -5,8 +5,8 @@ import numpy as np
 import os
 from . import metadata
 from .. import abcd
-from ..systematics.core import create_lumi_band
-from ... import core, utils, plotMaker
+from ...systematics.tools import create_lumi_band
+from ... import histo, utils, plotMaker
 from ...backends import RootBackend
 from ...histManipulate import rbin_merge
 from . import plot
@@ -28,7 +28,7 @@ def scale_to_xsec(hist, lumi, lumiunc=0.0, binwidth=True):
 
     _y_title = "d#sigma/dx [fb / binning]"
 
-    if isinstance(hist, core.HistogramBase):
+    if isinstance(hist, histo.HistogramBase):
         newhist = hist.copy()
         newhist.ytitle = _y_title
         if binwidth:
@@ -907,7 +907,7 @@ def make_debugging_plots(configMgr, yrange=(1e-1, 1e8), output_folder="unfolding
     for my_data in data:
         for region in my_data.regions:
             for observable in region.histograms:
-                if isinstance(observable, core.Histogram2D):
+                if isinstance(observable, histo.Histogram2D):
                     continue
 
                 legend = my_plotMaker.make_legend(text_size=None)

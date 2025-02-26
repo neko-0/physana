@@ -4,8 +4,8 @@ import logging
 from .lazy_import import lazy_import as lazy
 
 log = logging.getLogger(__name__)
-run_HistMaker = lazy("collinearw.run_HistMaker")
-configMgr = lazy("collinearw.configMgr")
+run_HistMaker = lazy("collinearw.histmaker.interface")
+configMgr = lazy("collinearw.configs.base")
 
 
 @click.group(name='histmaker')

@@ -1,41 +1,47 @@
 import pytest
+
 from collinearw import ConfigMgr
 
 
 def test_systematics_preparation():
     config = ConfigMgr()
 
-    config.define_tree_systematics("tree1", ["up1", "down1"], sys_type="dummy_type")
-    config.define_tree_systematics("tree2", ["up2", "down2"], sys_type="dummy_type")
+    grp1 = [
+        {"name": "JER", "syst_type": "exp", "tag": "1UP"},
+        {"name": "JER", "syst_type": "exp", "tag": "1DOWN"},
+    ]
+    grp2 = [
+        {"name": "PDF", "syst_type": "thoery", "tag": "PDF10000"},
+    ]
 
-    config.define_weight_systematics("weight1", ["PDF1", "PDF2"], sys_type="dummy_type")
+    config.define_systematics_group(**grp1[0])
+    config.define_systematics_group(**grp1[1])
+    config.define_systematics_group(**grp2[0])
 
-    assert len(config.systematics) == 3
-    assert "tree1" in config.systematics
-    assert "weight1" in config.systematics
-    assert len(config.systematics["tree1"]) == 2
-    assert len(config.systematics["weight1"]) == 2
+    assert len(config.systematics) == 2
+    assert len(config.systematics["JER"]) == 2
+    assert len(config.systematics["PDF"]) == 1
 
     config.add_process("ttbar")
 
     with pytest.raises(KeyError):
         # case where process is not added before set systematics
-        config.set_systematics("wjets", "tree1")
+        config.set_systematics("wjets", "JER")
         # case where the name of the systematics is not found
-        config.set_systematics("ttbar", "tree10")
+        config.set_systematics("ttbar", "PDF")
         # case where one of the systematics is not found
-        config.set_systematics("ttbar", ["tree1", "tree10"])
+        config.set_systematics("ttbar", ["JER", "JES"])
 
     # no systematics for ttbar since we have not set it to any systematics.
     assert len(config.get_process_set("ttbar").systematics) == 0
 
     # set systematics and check the size of ProcessSet.systematics
-    config.set_systematics("ttbar", "tree1")
+    config.set_systematics("ttbar", "JER")
     assert len(config.get_process_set("ttbar").systematics) == 2
 
     config.add_process("wjets")
-    config.set_systematics("wjets", ["tree1", "weight1"])
-    assert len(config.get_process_set("wjets").systematics) == 4
+    config.set_systematics("wjets", ["JER", "PDF"])
+    assert len(config.get_process_set("wjets").systematics) == 3
 
     # confirming ttbar remains the same
     assert len(config.get_process_set("ttbar").systematics) == 2
@@ -43,12 +49,12 @@ def test_systematics_preparation():
 
 def test_systematics_duplication():
     config = ConfigMgr()
-    config.define_tree_systematics("tree1", ["up1", "up2"], sys_type="dummpy_type")
-    with pytest.raises(ValueError):
-        config.define_tree_systematics("tree1", ["up1", "up2"], sys_type="dummpy_type")
 
-    # the name of the tree systematics cannot be reused in weight systematics
+    grp1 = [
+        {"name": "JER", "syst_type": "exp", "tag": "1UP"},
+    ]
+
+    config.define_systematics_group(**grp1[0])
+
     with pytest.raises(ValueError):
-        config.define_weight_systematics(
-            "tree1", ["PDF1", "PDF2"], sys_type="dummy_type"
-        )
+        config.define_systematics_group(**grp1[0])

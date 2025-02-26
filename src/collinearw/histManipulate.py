@@ -9,11 +9,13 @@ import sys
 import logging
 
 from . import run_PlotMaker
-from .core import Region, SystematicBase
-from .configMgr import ConfigMgr
+from .histo import Region
+from .systematics import SystematicsBase
+from .configs import ConfigMgr
 from .strategies.abcd import abcd
 from .strategies.correction import Correction
-from .run_HistMaker import run_HistMaker, refill_process
+from .histmaker.interface import run_HistMaker
+from .histmaker.interface import refill_process
 from .serialization import Serialization
 
 
@@ -105,7 +107,7 @@ class HistManipulate:
         if not (bg_fluctuation is None):
             add_tag += f"_{bg_fluctuation[1]}{bg_fluctuation[0]}"
 
-        my_process.rename(f"{process}_sub_{bg_name}{add_tag}")
+        my_process.name = f"{process}_sub_{bg_name}{add_tag}"
         logger.usr_log(f"subtracted process: {process}_sub_{bg_name}{add_tag}")
         configMgr.append_process(my_process)
 
@@ -218,7 +220,7 @@ class HistManipulate:
         # note data_copy here is a Process object
         data_pset = config_copy.get_process_set(data_name)
         data_copy = data_pset.get(systematic).copy()
-        data_copy.type = f"subtracted-{data_name}"
+        data_copy.dtype = f"subtracted-{data_name}"
         append_mode = None
         found_match_sys = False
         for process_name in list_processes:
@@ -236,13 +238,13 @@ class HistManipulate:
                 process = config_copy.get_process(process_name)
 
             show_sys = ""
-            if process.systematic:
+            if process.systematics:
                 show_sys = systematic
                 if not found_match_sys:
                     found_match_sys = True
-                    _syst_name = process.systematic.name
-                    _syst_full_name = process.systematic.full_name
-                    _syst_type = process.systematic.sys_type
+                    _syst_name = process.systematics.name
+                    _syst_full_name = process.systematics.full_name
+                    _syst_type = process.systematics.sys_type
                     append_mode = "merge"
 
             data_copy.sub(process)
@@ -254,12 +256,12 @@ class HistManipulate:
                     f"{systematic} always return Nominal for {process_name}!"
                 )
             else:
-                data_copy.systematic = SystematicBase(
+                data_copy.systematics = SystematicsBase(
                     _syst_name, _syst_full_name, "dummy", _syst_type
                 )
 
         if rename:
-            data_copy.rename(rename)
+            data_copy.name = rename
 
         if remove_neg:
             for r in data_copy.regions:
@@ -314,7 +316,7 @@ class HistManipulate:
         # note data_copy here is a Process object
         first_pset = config_copy.get_process_set(filtered_processes[0])
         first_copy = first_pset.get(systematic).copy()
-        first_copy.type = f"sum-{first_copy.name}"
+        first_copy.dtype = f"sum-{first_copy.name}"
         append_mode = None
         found_match_sys = False
         for process_name in filtered_processes[1:]:
@@ -324,13 +326,13 @@ class HistManipulate:
                 process = config_copy.get_process(process_name)
 
             show_sys = ""
-            if process.systematic:
+            if process.systematics:
                 show_sys = systematic
                 if not found_match_sys:
                     found_match_sys = True
-                    _syst_name = process.systematic.name
-                    _syst_full_name = process.systematic.full_name
-                    _syst_type = process.systematic.sys_type
+                    _syst_name = process.systematics.name
+                    _syst_full_name = process.systematics.full_name
+                    _syst_type = process.systematics.sys_type
                     append_mode = "merge"
 
             first_copy.add(process)
@@ -342,12 +344,12 @@ class HistManipulate:
                     f"{systematic} always return Nominal for {process_name}!"
                 )
             else:
-                first_copy.systematic = SystematicBase(
+                first_copy.systematics = SystematicsBase(
                     _syst_name, _syst_full_name, "dummy", _syst_type
                 )
 
         if rename:
-            first_copy.rename(rename)
+            first_copy.name = rename
 
         if remove_neg:
             for r in first_copy.regions:
@@ -617,7 +619,7 @@ def run_ABCD_Fakes_EventLevel(
                 fake_config.remove_process(fake_name, systematic=systematic)
                 for fake_p in fake_pset:
                     fake_p.process_type = 'fakes'
-                    fake_p.type = 'fakes'
+                    fake_p.dtype = 'fakes'
                     fake_p.title = 'fakes'
                     fake_config.append_process(fake_p, mode="merge")
         new_config = fake_config
@@ -979,7 +981,7 @@ def run_abcd_fakes_estimation(
         fakes_pset = final_config.get_process_set("fakes")
         for key, _data in nonclosure.items():
             lookup = ("nonclosure", "fakes", key)
-            _data.systematic = SystematicBase("nonclosure", lookup, "fakes")
+            _data.systematic = SystematicsBase("nonclosure", lookup, "fakes")
             fakes_pset.computed_systematics[lookup] = _data
 
     if prune:
@@ -994,7 +996,7 @@ def run_abcd_fakes_estimation(
                 for rname in p.list_regions("*ABCD*rA*"):
                     _region = p.get_region(rname)
                     for h in _region.histograms:
-                        if h.type == "tf":
+                        if h.dtype == "tf":
                             _region.remove_histogram(h)
 
     return final_config
@@ -1457,10 +1459,10 @@ def sum_process_sets(process_sets, title=None):
             else:
                 other_process = other_pset.get(syst)
                 sum_process.add(other_process)
-                if sum_process.systematic is None:
-                    sum_process.systematic = other_process.systematic
+                if sum_process.systematics is None:
+                    sum_process.systematics = other_process.systematics
         if sum_process:
-            if syst is not None and sum_process.systematic is None:
+            if syst is not None and sum_process.systematics is None:
                 logger.warning(f"getting nominal for {syst}?")
             sum_process.name = title if title else new_name
             pset_copy.add(sum_process)
@@ -1480,10 +1482,10 @@ def inclusive_repr(hist, inplace=False):
         c_hist.bin_content[i] = old_content[i:].sum()
         c_hist.sumW2[i] = old_sumW2[i:].sum()
 
-        if c_hist.systematic_band is None:
+        if c_hist.systematics_band is None:
             continue
 
-        for band in c_hist.systematic_band.values():
+        for band in c_hist.systematics_band.values():
             old_sum = old_content[i:].sum() or 1.0
             old_i = old_content[i:]
             components = band.components["up"].keys()
@@ -1532,9 +1534,9 @@ def rbin_merge(hist, inplace=False):
     old_content[-1] += hist.bin_content[-1]
     old_sumW2[-1] += hist.sumW2[-1]
 
-    if c_hist.systematic_band:
+    if c_hist.systematics_band:
 
-        for band in c_hist.systematic_band.values():
+        for band in c_hist.systematics_band.values():
             for name, val in band.components["up"].items():
                 overflow = (
                     val[-1] * hist.bin_content[-1] + val[-2] * hist.bin_content[-2]
@@ -1786,13 +1788,13 @@ def systematic_smoothing(
     if not smooth_syst:
         return c_hist
 
-    if c_hist.systematic_band is None:
+    if c_hist.systematics_band is None:
         raise RuntimeError("Cannot find systematic band")
 
     if filter_band is None:
         filter_band = set()
 
-    for bname, band in c_hist.systematic_band.items():
+    for bname, band in c_hist.systematics_band.items():
         if bname in filter_band:
             continue
         components = band.components["up"].keys()

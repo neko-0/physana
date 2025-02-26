@@ -9,12 +9,16 @@ from time import perf_counter
 from tqdm import tqdm
 from copy import deepcopy
 from fnmatch import fnmatch
-from itertools import zip_longest
 from numexpr import evaluate as ne_evaluate
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from functools import partial, lru_cache
-from .core import HistogramBase, Histogram, Histogram2D
-from .jitfunc import apply_phsp_correction, is_none_zero, parallel_nonzero_count
+from collections import defaultdict
+
+from ..histo import Histogram
+from ..histo import Histogram2D
+from ..histo.jitfunc import apply_phsp_correction
+from ..histo.jitfunc import is_none_zero
+from ..histo.jitfunc import parallel_nonzero_count
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -65,31 +69,20 @@ def weight_from_hist(events, obs, hist):
     if isinstance(hist, Histogram):
         if not isinstance(obs, str):
             raise TypeError("1D Histogram obs need to be str.")
-        # m_events = ne_evaluate(obs, events)
-        # _digitized = np.digitize(m_events, hist.bins)
-        # content = hist.get_bin_content(_digitized)
-        # error = hist.get_bin_error(_digitized)
-        # return content, error
         return hist.find_content_and_error(ne_evaluate(obs, events))
     elif isinstance(hist, Histogram2D):
         m_events_x = ne_evaluate(obs[0], events)
         m_events_y = ne_evaluate(obs[1], events)
-        # _digitized_x = np.digitize(m_events_x, hist.bins[0])
-        # _digitized_y = np.digitize(m_events_y, hist.bins[1])
-        # index_list = list(zip(_digitized_x, _digitized_y))
-        # content = hist.get_bin_content_list(index_list)
-        # error = hist.get_bin_error_list(index_list)
-        # return content, error
         return hist.find_content_and_error(m_events_x, m_events_y)
     else:
         raise TypeError("weight_hist dimension is not implemented")
 
 
 def weight_from_region(events, rname, process, weight_hist):
-    _w_r = process.get_region(rname)
+    _w_r = process.get(rname)
     if isinstance(weight_hist, tuple):
         _obs = weight_hist[0]
-        _w_hist = _w_r.get_histogram(weight_hist[1])
+        _w_hist = _w_r.get(weight_hist[1])
         return weight_from_hist(events, _obs, _w_hist)
     elif isinstance(weight_hist, dict):
         for key in weight_hist:
@@ -99,13 +92,13 @@ def weight_from_region(events, rname, process, weight_hist):
             if not isinstance(m_weight_hist, list):
                 # sinlge weighting hist case
                 _obs = m_weight_hist[0]
-                _w_hist = _w_r.get_histogram(m_weight_hist[1])
+                _w_hist = _w_r.get(m_weight_hist[1])
                 return weight_from_hist(events, _obs, _w_hist)
             cml_w = None  # cumulative
             cml_err = None
             for w_hist_set in m_weight_hist:
                 _obs = w_hist_set[0]
-                _w_hist = _w_r.get_histogram(w_hist_set[1])
+                _w_hist = _w_r.get(w_hist_set[1])
                 if cml_w is None:
                     cml_w, cml_err = weight_from_hist(events, _obs, _w_hist)
                 else:
@@ -230,44 +223,71 @@ class HistMaker:
 
     def __init__(
         self,
-        histogram_backend="numpy",
         *,
         nthread=None,
         use_mmap=False,
         disable_child_thread=True,
         xsec_sumw=None,
     ):
-        self._corrections = None
+        # processing status variables
         self._entry_start = 0
         self._entry_stop = -1
         self._tree_ibatch = 0
         self._is_init = False
         self._is_close = False
-        self._region_weight_tracker = {}
-        self.histogram_backend = histogram_backend
+        self.step_size = "50MB"
         self.disable_pbar = False
+        self.fill_file_status = None
         self.use_mmap = use_mmap
+
+        # tracking weights defined in regions
+        self._region_weight_tracker = {}
+
+        # default weight defined at the HistMaker
+        self.default_weight = None
+        self.enforce_default_weight = False
+
+        # old flag for ttree lookup error handling
+        self.RAISE_TREENAME_ERROR = True
+
+        # flag for sumW2 error propagation
+        self.err_prop = True
+
+        # branches reserved globally
+        self.reserved_branches = None
+
+        # for branch name renaming in the ttree
+        self.branch_rename = None
+
+        self.xsec_sumw = xsec_sumw  # cross section and sum of event weights
+        self.skip_dummy_processes = None
+
+        # variables for multi-thread/process histogram filling.
+        self.hist_fill_type = None
+        self.hist_fill_executor = None
+
+        # phase space correction
+        self.corrections = None
         self.phasespace_corr_obs = ["nJet30"]
         self.phasespace_apply_nominal = True
         self.phsp_fallback = True
-        self.default_weight = None
-        self.enforce_default_weight = False
-        self.branch_list = None
-        self.RAISE_TREENAME_ERROR = True
-        self.step_size = "50MB"
-        self.err_prop = True
-        self.branch_rename = None  # dict for swapping branch name in the ntuple
-        self.hist_fill_type = None
-        self.hist_fill_executor = None
-        self.xsec_sumw = xsec_sumw  # cross section and sum of event weights
-        self.fill_file_status = None
-        self.skip_dummy_processes = None
+
+        # cutbook sum weights
         self.use_cutbook_sum_weights = False
         self.acc_cutbook_sum_weights = False
         self._cutbook_sum_weights_dict = None
         self.dsid_branch = None
         self.run_number_branch = None
 
+        # systematics name handling
+        self.enable_systematics = True
+        self.systematics_tag = "_SYS_"
+        self._current_syst_tag = None
+
+        # selection tracking variables
+        self._selection_tracker = defaultdict(dict)
+
+        # file processing variables and threads
         self.f_decompression_executor = None
         self.f_interpretation_executor = None
         if mp.current_process().name != "MainProcess" and disable_child_thread:
@@ -312,9 +332,9 @@ class HistMaker:
         that if you have new feature to histmaker and you forget to propagate it into
         other methods.
         """
-        self._corrections = config.corrections
+        self.corrections = config.corrections
         self.default_weight = config.default_weight
-        self.branch_list = config.reserved_branches
+        self.reserved_branches = config.reserved_branches
         self.phasespace_corr_obs = config.phasespace_corr_obs
         self.phasespace_apply_nominal = config.phasespace_apply_nominal
         self.enforce_default_weight = config.enforce_default_weight
@@ -362,39 +382,8 @@ class HistMaker:
     def raw_open(self, *args, **kwargs):
         return uproot.open(*args, **kwargs)
 
-    def _make_weight_func(self, weight_func_file=None):
-        """
-        get the weight with a given observable. The weight function is generated elsewhere.
-
-        Depreciated
-        """
-        if weight_func_file is None:
-            return None
-        else:
-            if ".json" in weight_func_file:
-                with open(weight_func_file) as dfile:
-                    data = json.load(dfile)
-                    return ("json", data["bins"], data["bin_content"])
-            return None
-
-    def _make_weight_gen(self, weight_function):
-        """
-        Depreciated
-        """
-        if weight_function[0] == "json":
-
-            def weight_gen(observable_array):
-                observable_digitized = np.digitize(observable_array, weight_function[1])
-                weight = [
-                    weight_function[2][w_bin - 1][0] for w_bin in observable_digitized
-                ]
-                return np.array(weight)
-
-            return weight_gen
-        return None
-
     def skip_dummy(self, p):
-        is_dummy = getattr(p.systematic, "source", None) == "dummy"
+        is_dummy = getattr(p.systematic, "is_dummy", False)
         if not is_dummy:
             return False
         if self.skip_dummy_processes and p.name in self.skip_dummy_processes:
@@ -402,275 +391,54 @@ class HistMaker:
             return True
         return False
 
-    def process_weight_gen(
-        self, configMgr, observable_name, weight_func_file, scale_factor
-    ):
-        """
-        only gose into TH1 for now.
-        """
-        weight_func = self._make_weight_func(weight_func_file)
-        if weight_func is None:
-            logger.warning("cannot run process with weight.")
-        else:
-            weight_gen = self._make_weight_gen(weight_func)
-            if weight_gen:
-                self.process(
-                    configMgr, ext_rweight=(weight_gen, observable_name, scale_factor)
-                )
-            else:
-                logger.warning("cannot get weight generator.")
+    def process_weights_parser(self, process):
+        """Return the process-level weights as a string."""
+        process_weights = process.weights
+        if process_weights:
+            if isinstance(process_weights, list):
+                process_weights = "*".join(process_weights)
 
-    def process_ttree_resolve(self, tfile, p):
-        """
-        Resolving TTree lookup for a given Process object. Systematic name and
-        weight are also being unpack here.
+        # handle systematics naming
+        if self.enable_systematics:
+            tag_new = self._current_syst_tag
+            tag_old = self.systematics_tag
+            process_weights = process_weights.replace(tag_old, tag_new)
 
-        Args:
-            tfile: uproot.ReadOnlyFile
-                TFile opened by the uproot interface.
+        return process_weights
 
-            p: core.Process
-                instance of core.Process class
+    def region_weights_parser(self, region, process_weights=None):
+        if region.name in self._region_weight_tracker:
+            return self._region_weight_tracker[region.name]
 
-        Return:
-            ttree, systematic full name, systematic weight
-        """
+        region_weights = None
 
-        # if the systematic source is dummy, treat it as nominal, and the
-        # systematic is just a place holder. It's usefull for phasespace
-        # correction when systematic is involved.
-        is_dummy = getattr(p.systematic, "source", None) == "dummy"
-        if p.systematic is None or is_dummy:
-            sys_weight = None
-            swap_weight = None
-            if is_dummy:
-                sys_name = p.systematic.full_name
-                logger.warning(
-                    ", ".join(
-                        [
-                            f"'dummy' source is specified in {sys_name}",
-                            f"{p.name} will be filled with nominal tree.",
-                        ]
-                    )
-                )
-            else:
-                sys_name = None
-
-            # if cross section and sum weight setting is specified,
-            # spcecial filename and treename check will be performed.
-            # otherwise old routine would be used.
-            if self.xsec_sumw:
-                if not self.xsec_sumw.nominal(tfile.file_path):
-                    return None, sys_name, sys_weight, swap_weight
-                # Warning: xsec_sumw cannot tell the difference between
-                # different processes since they are all tree_*
-                # the xsec_sumw.check_process just does a basic name comparison.
-                self.xsec_sumw.match(tfile.file_path)
-                if not self.xsec_sumw.check_process(p.name):
-                    return None, sys_name, sys_weight, swap_weight
-                if self.xsec_sumw.use_process_nominal_tree:
-                    treename = p.treename
-                else:
-                    treename = "tree_NoSys"
-            else:
-                treename = f"{p.name}_NoSys"
-
-            if treename in tfile:
-                return tfile[treename], sys_name, sys_weight, swap_weight
-
-            # fall back option to use process defined treename
-            if p.treename in tfile:
-                return tfile[p.treename], sys_name, sys_weight, swap_weight
-
-            if self.RAISE_TREENAME_ERROR:
-                raise RuntimeError(f"unable to get nominal tree from {p.name}")
-
-            logger.critical(
-                ", ".join(
-                    [
-                        f"{self.RAISE_TREENAME_ERROR=}",
-                        f"tree lookup failed for process {p.name}",
-                        f"skipping base tree {p.treename} in {tfile.file_path}",
-                    ]
-                )
+        if region.weights:
+            region_weights = (
+                region.weights
+                if isinstance(region.weights, str)
+                else "*".join(region.weights)
             )
-            return None, sys_name, sys_weight, swap_weight
+            if process_weights:
+                region_weights += f"*{process_weights}"
 
-        sys_name, sys_weight = p.systematic.full_name, p.systematic.weight
-        swap_weight = p.systematic.swap_weight
-
-        if self.xsec_sumw:
-            self.xsec_sumw.match(tfile.file_path)
-            if not self.xsec_sumw.check_process(p.name):
-                return None, sys_name, sys_weight, swap_weight
-            tree_prefix = "tree"
-        else:
-            tree_prefix = p.treename
-
-        if "NoSys" in tree_prefix:
-            treename = f"{tree_prefix.replace('NoSys', p.systematic.treename)}"
-        else:
-            treename = f"{tree_prefix}_{p.systematic.treename}"
-
-        if treename not in tfile:
-            if self.RAISE_TREENAME_ERROR:
-                raise RuntimeError(f"cannot find {treename}")
-            logger.warning(
-                ", ".join(
-                    [
-                        f"{self.RAISE_TREENAME_ERROR=}",
-                        f"tree lookup failed for process {p.name}",
-                        f"skiping base tree {p.treename} in {tfile.file_path}",
-                        f"systematic {sys_name}",
-                        f"systematic weight {sys_weight}",
-                    ]
-                )
-            )
-            return None, sys_name, sys_weight, swap_weight
-
-        # check for weight base systematics
-        ttree = tfile[treename]
-        if sys_weight:
-            if self.branch_rename and sys_weight in self.branch_rename.values():
-                for old_b, new_b in self.branch_rename.items():
-                    if sys_weight == new_b and old_b not in ttree:
-                        return None, sys_name, sys_weight, swap_weight
-            elif sys_weight not in ttree:
-                logger.debug(f"{sys_weight} is not in {treename} of {tfile.file_path}")
-                return None, sys_name, sys_weight, swap_weight
-            if self.xsec_sumw:
-                # remove LHE3Weight in multiple files, maybe there's better way?
-                # LHE3Weight, leptonWeight, etc are found in all files??
-                # duplicated_list = {"LHE3Weight", "pileupWeight", "triggerWeight"}
-                duplicated_list = self.xsec_sumw.duplicated_list
-                do_check = np.any([x in sys_weight for x in duplicated_list])
-                if do_check:
-                    skip_campaign = self.xsec_sumw.duplicated_skip_campaign or {}
-                    accept_list = self.xsec_sumw.duplicated_accept or set()
-                    # if syst is one of the accept list, check campaign
-                    if self.xsec_sumw['syst'] in accept_list:
-                        # this duplicated_skip_campaign.get(self.xsec_sumw['campaign'], None)
-                        # return a syst, e.g. 'pileupWeight'
-                        skip_weight = skip_campaign.get(
-                            self.xsec_sumw['campaign'], None
-                        )
-                        if skip_weight and skip_weight in sys_weight:
-                            do_check = False
-                if do_check:
-                    _check_set = None
-                    if self.xsec_sumw.duplicated_sets:
-                        # this is a map, e.g. {'triggerWeight' : 'weight_2'}
-                        # where the key is used to match the item in
-                        # self.xsec_sumw.duplicated_list, then apply the matching
-                        # of systematic set. If None of them were found, matching
-                        # will be done with nominal.
-                        for _syst_set in self.xsec_sumw.duplicated_sets:
-                            if _syst_set in sys_weight:
-                                _check_set = self.xsec_sumw.duplicated_sets[_syst_set]
-                                break
-                    # note if _check_set is None, then this is same as
-                    # self.xsec_sumw.nominal(tfile.file_path)
-                    if not self.xsec_sumw.check_syst_set(tfile.file_path, _check_set):
-                        return None, sys_name, sys_weight, swap_weight
-
-                # check for ptag to remove for a given weight base sysetmatic
-                # This only does a generic 'in' check, so 'bTagWeight' can filter
-                # any 'bTagWeight_*' systematics. Similar for p-tag. e.g. 'p4512'
-                if self.xsec_sumw.remove_wsyst_ptag:
-                    _tag_proc = self.xsec_sumw.remove_wsyst_ptag.get(
-                        self.xsec_sumw['process'], None
-                    )
-                    if _tag_proc is not None:
-                        campaign = _tag_proc.get(self.xsec_sumw['campaign'], None)
-                        if campaign is not None:
-                            for _wsyst, _ptag in campaign.items():
-                                if (
-                                    _wsyst in sys_weight
-                                    and _ptag in self.xsec_sumw['ptag']
-                                ):
-                                    return None, sys_name, sys_weight, swap_weight
-
-        return ttree, sys_name, sys_weight, swap_weight
-
-    def parse_process_weights(self, p, syst_w, swap_w=None):
-        """
-        Args:
-            syst_w : str
-                systematic weight string
-
-            swap_w : str
-                weight string being swap with syst_w
-        """
-        if p.weights:
-            if isinstance(p.weights, list):
-                process_weights = "*".join(p.weights)
+        if self.enforce_default_weight and self.default_weight:
+            if region_weights is None and process_weights is None:
+                region_weights = self.default_weight
             else:
-                process_weights = p.weights
-        else:
-            process_weights = None
+                region_weights = f"*{self.default_weight}"
 
-        # NOTE: if swap_w is specified, the systematic weight will not be set
-        # here. Swaping is expecting instead of appending.
-        swap_w_dict = {}
-        if syst_w:
-            if swap_w is None:
-                if process_weights:
-                    # just append to the existing weight string
-                    process_weights += f"*{syst_w}"
-                else:
-                    process_weights = syst_w
-            else:
-                swap_w_dict[swap_w] = syst_w
+        # handle systematics naming
+        if self.enable_systematics:
+            tag_new = self._current_syst_tag
+            tag_old = self.systematics_tag
+            region_weights = region_weights.replace(tag_old, tag_new)
 
-        logger.debug(f"Process level weights: {process_weights}")
+        if process_weights:
+            region_weights = f"{region_weights}*{process_weights}"
 
-        return process_weights, swap_w_dict
+        self._region_weight_tracker[region.name] = region_weights
 
-    def parse_region_weights(self, r, process_w=None, swap_w_dict=None):
-        """
-        Args:
-            process_w : str
-                process level weight string.
-
-            swap_w_dict : {str : str}
-                dictionary for swapping weight strings.
-        """
-
-        if r.name in self._region_weight_tracker:
-            return self._region_weight_tracker[r.name]
-
-        # obtaining process and region level weights
-        # if none of them were found, try to use the
-        # histmaker default weight. i.e self.default_weight
-        r_weights = None
-        if process_w is None and r.weights is None:
-            if self.default_weight:
-                r_weights = self.default_weight
-        else:
-            if r.weights:
-                if isinstance(r.weights, list):
-                    r_weights = "*".join(r.weights)
-                else:
-                    r_weights = r.weights
-                if process_w:
-                    r_weights += f"*{process_w}"
-            elif process_w:
-                r_weights = process_w
-
-            # check if user enforce to use default weight
-            if self.enforce_default_weight and self.default_weight:
-                if r_weights:
-                    r_weights += f"*{self.default_weight}"
-                else:
-                    r_weights = self.default_weight
-
-        if swap_w_dict and r_weights:
-            for old_w, new_w in swap_w_dict.items():
-                r_weights = r_weights.replace(old_w, new_w)
-
-        self._region_weight_tracker[r.name] = r_weights
-
-        return r_weights
+        return region_weights
 
     def phase_space_correction(
         self,
@@ -680,7 +448,7 @@ class HistMaker:
         correction_variable=None,
         systematic=None,
     ):
-        if not self._corrections:
+        if not self.corrections:
             return None, None
 
         if correction_variable is None:
@@ -708,12 +476,6 @@ class HistMaker:
             elif isinstance(h, numbers.Number):
                 m_weight = h
                 m_error = 0.0
-            else:
-                logger.warning(f"Depreciated method using {type(h)}")
-                nJetArray = event[corr_obs]
-                m_weight = [h.GetBinContent(h.FindBin(e)) for e in nJetArray]
-                m_error = [h.GetBinError(h.FindBin(e)) for e in nJetArray]
-                m_weight, m_error = np.array(m_weight), np.array(m_error)
             if weight is None:
                 weight = m_weight
                 error = m_error
@@ -734,10 +496,20 @@ class HistMaker:
             # check if there's specified weights in the histogram
             # overwrite the weights defined in process/region/default
             if hist.weights:
-                hist_w = ne_evaluate(hist.weights, event)[mask]
+                if self.enable_systematics:
+                    tag_new = self._current_syst_tag
+                    tag_old = self.systematics_tag
+                    weights_str = hist.weights.replace(tag_old, tag_new)
+                    obs = (x.replace(tag_old, tag_new) for x in hist.observable)
+                else:
+                    weights_str = hist.weights
+                    obs = hist.observable
+                hist_w = ne_evaluate(weights_str, event)[mask]
             else:
+                obs = hist.observable
                 hist_w = weights[mask]
-            fdata = histogram_eval(event, mask, *hist.observable)
+
+            fdata = histogram_eval(event, mask, *obs)
             hist.from_array(*fdata, hist_w, sumW2[mask] if self.err_prop else None)
 
     def _hist_loop_threadpool(self, histograms, mask, event, weights, sumW2):
@@ -801,100 +573,161 @@ class HistMaker:
             assert hist.name == filled_hist.name
             hist.add(filled_hist)
 
-    def plevel_process(self, p, *args, **kwargs):
-        if p.combine_tree:  # combine_tree need to be iterable
-            c_p = p.copy()
-            c_p.clear_content()
-            for treename in p.combine_tree:
-                if isinstance(treename, tuple):
-                    c_p.treename = treename[0]
-                    c_p.selection = treename[1]
-                elif isinstance(treename, dict):
-                    for key, value in treename.items():
-                        setattr(c_p, key, value)
-                else:
-                    c_p.treename = treename
-                    c_p.selection = None
-                self._plevel_process(c_p, *args, **kwargs)
-            p.add(c_p)
-        return self._plevel_process(p, *args, **kwargs)
+    def set_systematics_tag(self, process):
+        if not self.enable_systematics:
+            return
 
-    def _plevel_process(
+        syst = process.systematics
+        if syst:
+            self._current_syst_tag = f"_{syst.tag}_"
+        else:
+            self._current_syst_tag = "_NOSYS_"
+
+    def resolve_ttree(self, tfile, process):
+        treename = process.treename
+
+        if treename in tfile:
+            return tfile[treename]
+
+        if self.RAISE_TREENAME_ERROR:
+            raise RuntimeError(f"{process.name} has no tree {treename}")
+
+        logger.critical(
+            f"Tree lookup failed for process {process.name}. "
+            f"Skipping base tree {treename} in {tfile.file_path}"
+        )
+
+        return None
+
+    def prepare_selection(self, process):
+        # all_mask is a mask with only process level selection
+        # if no process level seletion, accept all events.
+        # the mask is array of True/False.
+        syst = process.systematics
+        if syst:
+            process_lookup = (process.name, syst.full_name)
+        else:
+            process_lookup = (process.name, None)
+
+        proc_sel = process.selection
+
+        self._selection_tracker[process_lookup] = {"selection": proc_sel}
+
+        for region in process:
+            # setting process level and region level selection
+            # this is basically cuts in ROOT TTree but in numpy format
+            p_r_selection = []
+            if proc_sel:
+                p_r_selection.append(f"({proc_sel})")
+            if region.selection:
+                p_r_selection.append(region.selection)
+
+            # combinding process and region level selections
+            if p_r_selection:
+                selection_str = "&".join(p_r_selection)
+                selection_str = selection_str.replace("()", "")
+                selection_str = selection_str.strip().strip("&")
+            else:
+                selection_str = ""
+
+            self._selection_tracker[process_lookup][region.name] = selection_str
+
+            # just storing the region and process level
+            # selection to the region object
+            if region.full_selection is None:
+                region.full_selection = selection_str
+                logger.debug(
+                    f"Set region full selection {region.name}: {selection_str}"
+                )
+
+    def get_selection(self, process, region=None):
+        syst = process.systematics
+        if syst:
+            process_lookup = (process.name, syst.full_name)
+        else:
+            process_lookup = (process.name, None)
+
+        if region is None:
+            return self._selection_tracker[process_lookup]["selection"]
+        else:
+            return self._selection_tracker[process_lookup][region.name]
+
+    def select_branches(self, process):
+        # Use branches from process and its regions.
+        branch_filter = process.ntuple_branches | {r.ntuple_branches for r in process}
+
+        # if branch renaming is requested, we need to make sure the original
+        # names are used for branch filtering.
+        if self.branch_rename:
+            branch_filter = {
+                old_b if new_b in branch_filter else new_b
+                for old_b, new_b in self.branch_rename.items()
+            }
+
+        if self.use_cutbook_sum_weights:
+            branch_filter |= {self.dsid_branch, self.run_number_branch} - {None, ""}
+
+        if self.enable_systematics:
+            tag_new = self._current_syst_tag
+            tag_old = self.systematics_tag
+            branch_filter = {x.replace(tag_old, tag_new) for x in branch_filter}
+
+            self.branch_rename = {
+                x.replace(tag_old, tag_new): y.replace(tag_old, tag_new)
+                for x, y in self.branch_rename.items()
+            }
+
+        return branch_filter or self.reserved_branches
+
+    def filling_process_from_file(self, process, *args, **kwargs):
+        if process.combine_tree:
+            combined_process = process.copy()
+            combined_process.clear_content()
+            for tree_config in process.combine_tree:
+                if isinstance(tree_config, tuple):
+                    combined_process.treename = tree_config[0]
+                    combined_process.selection = tree_config[1]
+                elif isinstance(tree_config, dict):
+                    for key, value in tree_config.items():
+                        setattr(combined_process, key, value)
+                else:
+                    combined_process.treename = tree_config
+                    combined_process.selection = None
+                self._filling_process_from_file(combined_process, *args, **kwargs)
+            process.add(combined_process)
+        return self._plevel_process(process, *args, **kwargs)
+
+    def _filling_process_from_file(
         self,
         p,
         file_name,
         *,
-        branch_list=None,
-        weight_generators=[],
-        weight_generators_filters=[],
-        ext_rweight=None,
-        ext_pweight=None,
-        step_size=None,
+        reserved_branches=None,
         copy=False,
         histogram_method=None,
     ):
-        """
-        filling process level.
-
-        Args:
-            file_name : str
-                path to the ROOT file.
-
-            p : core.Process
-                An instance of core.Process object.
-
-            branch_list : list(str)
-                list of branch names.
-
-            weight_generators : [functools.partial] or [ lambda ]
-                list of weight generators that take event (dict(str:np.array))
-                as direct input and return weight array.
-
-            weight_generators_filters : [ tuple(str) ]
-                filtering and matching the correspoding weight generator in
-                weight_generators. The first element is the method in MatchHelper,
-                and the rest are arguments. e.g ('region_name', 'electron'),
-                this will use MatchHelper.region_name('electron')
-
-            ext_rweight :
-                a function that accept event and mask,
-                or a dict of {"process", "obs", "weight_hist"}
-
-            ext_pweight :
-                external weight for process. [(str, str, HistogramBase)]
-                e.g. [(process_name, region_name, HistogramBase object)]
-        """
-
-        # replace the global decompression_executor and interpretation_executor
-        # with 2 threads executor if it is not the main process
-        # this avoid the hang if there's ProcessPoolExecutor in the external layer
-        # if gettting into MemoryError: Unable to allocate on SLAC, try limit on setup size
-        # step_size = "100MB"
-        '''
-        if executor is None:
-            if mp.current_process().name != "MainProcess":
-                executor = ThreadPoolExecutor(1)
-            else:
-                executor = ThreadPoolExecutor(5)
-        else:
-            pass
-        '''
-        # step_size = 10000
-
         phsp_lookup = self.phase_space_correction
         phsp_fallback = self.phsp_fallback and not self.phasespace_apply_nominal
-        parse_process_weights = self.parse_process_weights
-        parse_region_weights = self.parse_region_weights
+        process_weights_parser = self.process_weights_parser
+        region_weights_parser = self.region_weights_parser
+
         # open_file = self.open_file
         open_file = uproot.open
+
         t_start = perf_counter()
 
         with open_file(file_name) as tfile:
-            ttree, sys_name, sys_weight, swap_w = self.process_ttree_resolve(tfile, p)
+            ttree = self.resolve_ttree(tfile, p)
 
             # check ttree and number of entry. return early if it's zero
             if ttree is None or ttree.num_entries == 0:
                 return p.copy() if copy else p
+
+            # setting the current systematics tag
+            self.set_systematics_tag(p)
+
+            # prepare selection for all regions inside the process.
+            self.prepare_selection(p)
 
             # clear existing region weights tracker
             self._region_weight_tracker = {}
@@ -911,42 +744,15 @@ class HistMaker:
 
             logger.debug(f"retrieved {ttree.name}")
             logger.debug(f"opened {file_name}")
-            logger.debug(f"ext_rweight: {ext_rweight}")
-            has_corr = "with correction" if self._corrections else ""
+            has_corr = "with correction" if self.corrections else ""
 
-            p_weights, swap_w_dict = parse_process_weights(p, sys_weight, swap_w)
+            p_weights = process_weights_parser(p)
 
-            # try to get branches from the Process instance, and the branches of
-            # regions within it.
-            p_branch = p.ntuple_branches.copy()
-            for r in p.regions:
-                p_branch |= r.ntuple_branches
-
-            branch_filter = branch_list or p_branch or self.branch_list
-            # if branch renaming is requested, we need to make sure the original
-            # names are used for branch filtering.
-            if self.branch_rename:
-                for old_bname, new_bname in self.branch_rename.items():
-                    if new_bname not in branch_filter:
-                        continue
-                    branch_filter.discard(new_bname)
-                    branch_filter.add(old_bname)
-
-            if self.xsec_sumw:
-                branch_filter.add(self.xsec_sumw.dsid)
-                # self.xsec_sumw.match(file_name) # matched in process_ttree_resolve
-                evt_w = self.xsec_sumw.get_auto()
-            else:
-                evt_w = None
-
-            if self.use_cutbook_sum_weights:
-                if self.dsid_branch:
-                    branch_filter.add(self.dsid_branch)
-                if self.run_number_branch:
-                    branch_filter.add(self.run_number_branch)
+            # check for filtered branches
+            branch_filter = reserved_branches or self.select_branches(p)
 
             with tqdm(
-                desc=f"Processing {p.name}|{sys_name or 'nominal'} events {has_corr}",
+                desc=f"Processing {p.name}|{p.systematics or 'nominal'} {has_corr}",
                 total=ttree.num_entries,
                 leave=False,
                 unit="events",
@@ -954,7 +760,7 @@ class HistMaker:
                 disable=self.disable_pbar,
             ) as pbar_events:
                 for event, report in ttree.iterate(
-                    step_size=step_size or self.step_size,
+                    step_size=self.step_size,
                     filter_name=branch_filter,
                     report=True,
                     library="np",
@@ -968,32 +774,21 @@ class HistMaker:
                     # renaming the branches
                     if self.branch_rename:
                         for old_bname, new_bname in self.branch_rename.items():
-                            if old_bname not in event:
-                                continue
-                            event[new_bname] = event.pop(old_bname)
+                            if old_bname in event:
+                                event[new_bname] = event.pop(old_bname)
 
                     # all_mask is a mask with only process level selection
                     # if no process level seletion, accept all events.
                     # the mask is array of True/False.
-                    if p.selection_numexpr:
-                        all_mask = ne_evaluate(p.selection_numexpr, event)
+                    p_sel = self.get_selection(p)
+                    if p_sel:
+                        all_mask = ne_evaluate(p_sel, event)
                         if not is_none_zero(all_mask):
                             logger.debug("No event after process selection")
                             pbar_events.update(nevent)
                             continue
                     else:
                         all_mask = np.full(nevent, True)
-
-                    '''
-                    # assuming all the dsid are the same within single file
-                    if self.xsec_sumw:
-                        dsid = np.unique(event[self.xsec_sumw.dsid])
-                        assert len(dsid) == 1
-                        dsid = str(dsid[0])
-                        evt_w = self.xsec_sumw.get_xsec_sumw(dsid, "weight_1")
-                    else:
-                        evt_w = None
-                    '''
 
                     pbar_regions = tqdm(
                         p.regions,
@@ -1006,38 +801,13 @@ class HistMaker:
                             f"{p.name}, Region: {r.name}({len(r.histograms)})"
                         )
 
-                        # setting process level and region level selection
-                        # this is basically cuts in ROOT TTree but in numpy format
-                        p_r_selection = []
-                        if p.selection_numexpr:
-                            p_r_selection.append(f"({p.selection_numexpr})")
-                        if r.selection_numexpr:
-                            p_r_selection.append(f"({r.selection_numexpr})")
-
-                        # combinding process and region level selections
-                        if p_r_selection:
-                            selection_str = "&".join(p_r_selection)
-                            selection_str = selection_str.replace("()", "")
-                            selection_str = selection_str.strip().strip("&")
-                        else:
-                            selection_str = ""
-
+                        selection_str = self.get_selection(p, r)
                         # if no selection string is found, assume accepting all values
                         if selection_str:
                             mask = ne_evaluate(selection_str, event)
                         else:
-                            logger.debug(
-                                f"empty seleciton on region {r.name}. Assume no selection."
-                            )
+                            logger.debug(f"empty seleciton on region {r.name}.")
                             mask = all_mask
-
-                        # just storing the region and process level
-                        # selection to the region object
-                        if r._full_selection is None:
-                            r._full_selection = selection_str
-                            logger.debug(
-                                f"full selection (region+process) for {r.name}: {r._full_selection}"
-                            )
 
                         # go to next iteration if no events passed both
                         # process and region level selection
@@ -1063,95 +833,32 @@ class HistMaker:
                                 weights /= get_sum_weights(evt_dsid, evt_num, file_name)
 
                         # combine region and process weights
-                        r_weights = parse_region_weights(r, p_weights, swap_w_dict)
+                        r_weights = region_weights_parser(r, p_weights)
                         if r_weights:
                             weights *= ne_evaluate(r_weights, event)
-
-                        # get the pure event count without any region selection.
-                        # bascially this is the number of events after process selection
-                        r.total_event_count += np.sum(weights[all_mask])
-
-                        if p.lumi:  # scale with process level lumi if there's any
-                            weights *= p.lumi
-
-                        if evt_w is not None:
-                            weights *= evt_w
 
                         # compute w2 for each event
                         sumW2 += weights**2
 
+                        # get the pure event count without any region selection.
+                        # bascially this is the number of events after process selection
+                        r.total_nevents += np.sum(weights[all_mask])
+
                         # Apply a phase-space correction factor to a given process
                         phsp, phsp_err = phsp_lookup(
-                            event, p.name, r.corr_type, systematic=sys_name
+                            event, p.name, r.corr_type, systematic=None
                         )
                         if phsp is None:
                             # if the above is not found, try lookup based on treename
                             # temperoraly use for iterative corrction
                             # might need a better approach
                             phsp, phsp_err = phsp_lookup(
-                                event, p.treename, r.corr_type, systematic=sys_name
+                                event, p.treename, r.corr_type, systematic=None
                             )
                         if phsp is None and phsp_fallback:
                             phsp, phsp_err = phsp_lookup(event, p.name, r.corr_type)
                         if phsp is not None:
                             _apply_phsp(weights, sumW2, phsp, phsp_err)
-
-                        # handle external weight
-                        if ext_rweight:
-                            # this excpet ext_rweight contains external Process object
-                            # this will apply weight on every process and (filter) regions
-                            if isinstance(ext_rweight, dict):
-                                _rname = ext_rweight.get("region", r.name)
-                                ext_w, ext_err = weight_from_region(
-                                    event, _rname, **ext_rweight
-                                )
-                            # this expect ext_rweight is a method that directly
-                            # call event
-                            else:
-                                ext_w = ext_rweight(event)
-                                ext_err = np.ones(ext_w.shape)
-                            sumW2 *= ext_w**2
-                            sumW2 += (weights * ext_err) ** 2
-                            weights *= ext_w
-
-                        if ext_pweight:
-                            for _pweight in ext_pweight:
-                                if _pweight[0] != p.name or _pweight[1] != r.name:
-                                    continue
-                                if isinstance(_pweight[3], HistogramBase):
-                                    _corr, _err = weight_from_hist(
-                                        event,
-                                        _pweight[3].observable,
-                                        _pweight[3],
-                                    )
-                                    sumW2 *= _corr**2
-                                    sumW2 += (weights * _err) ** 2
-                                    weights *= _corr
-                                else:
-                                    weights *= _pweight[3]
-
-                        w_gen_set = zip_longest(
-                            weight_generators, weight_generators_filters
-                        )
-                        for w_gen, w_filter in w_gen_set:
-                            # print(f"{w_filter=}")
-                            if w_gen is None:
-                                continue
-                            if w_filter:
-                                filter_name = w_filter[0]
-                                filter_args = w_filter[1:]
-                                wf = getattr(MatchHelper, filter_name)(*filter_args)
-                                if "region" in filter_name:
-                                    # print(f"wf = {wf(r)}")
-                                    if not wf(r):
-                                        continue
-                                if "process" in filter_name:
-                                    if not wf(p):
-                                        continue
-                            _gen_w, _gen_w_err = w_gen(event)
-                            sumW2 *= _gen_w**2
-                            sumW2 += (weights * _gen_w_err) ** 2
-                            weights *= _gen_w
 
                         # check if all event weights are zero
                         # this could cause by multiply 0 (SF or correction).
@@ -1159,8 +866,8 @@ class HistMaker:
                             logger.debug("all of the weights are zero!")
                             continue
 
-                        r.event_count += non_zero_count
-                        r.effective_event_count += np.sum(weights[mask])
+                        r.filled_nevents += non_zero_count
+                        r.effective_nevents += np.sum(weights[mask])
                         if self.err_prop:
                             r.sumW2 += np.sum(sumW2[mask])
                         else:
@@ -1182,10 +889,9 @@ class HistMaker:
                     else:
                         pbar_events.update(nevent)
 
-                    # del event
         return p.copy() if copy else p
 
-    def process(self, config, pFilter=None, *args, **kwargs):
+    def start_filling(self, config, pFilter=None, *args, **kwargs):
         """
         Process instance of ConfigMgr and fill events from TTree
 
@@ -1232,7 +938,7 @@ class HistMaker:
                 self.fill_file_status = f"{i+1}/{file_pbar.total or 'NA'}"
                 if kwargs.get("copy", None):
                     kwargs["copy"] = False
-                self.plevel_process(p, fname, *args, **kwargs)
+                self.filling_process_from_file(p, fname, *args, **kwargs)
         psets_pbar.close()
 
 
@@ -1249,13 +955,13 @@ def _filter_missing_ttree(process, *args, branch_rename=None, **kwargs):
     histmaker.branch_rename = branch_rename
     # open_root_file = histmaker.open_file
     open_root_file = uproot.open
-    check_ttree = histmaker.process_ttree_resolve
+    check_ttree = histmaker.resolve_ttree
     filtered_files = []
     append = filtered_files.append
     for f in process.filename:
         with open_root_file(f) as opened_f:
             try:
-                ttree, *_ = check_ttree(opened_f, process)
+                ttree = check_ttree(opened_f, process)
             except RuntimeError:
                 continue
             if ttree is None or ttree.num_entries == 0:

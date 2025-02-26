@@ -638,15 +638,18 @@ def from_th1(histo: Histogram, roothist):
         histo.sumW2[i] = roothist.GetBinError(i) ** 2
     histo.xtitle = roothist.GetXaxis().GetTitle()
     histo.ytitle = roothist.GetYaxis().GetTitle()
-    # set styles
-    histo.color = roothist.GetLineColor()
-    histo.linestyle = roothist.GetLineStyle()
-    histo.linewidth = roothist.GetLineWidth()
-    histo.markerstyle = roothist.GetMarkerStyle()
-    histo.markersize = roothist.GetMarkerSize()
-    histo.binerror = 0
-    histo.fillstyle = roothist.GetFillStyle()
-    histo.alpha = None
+    # set styles and store in the histogram metadata
+    style = {
+        "color" : roothist.GetLineColor(),
+        "linestyle" : roothist.GetLineStyle(),
+        "linewidth" : roothist.GetLineWidth(),
+        "markerstyle" : roothist.GetMarkerStyle(),
+        "markersize" : roothist.GetMarkerSize(),
+        "binerror" : 0,
+        "fillstyle" : roothist.GetFillStyle(),
+        "alpha" : None
+    }
+    histo.metadata["style"] = style
 
 
 def to_th2(histo: Histogram2D):
@@ -700,12 +703,15 @@ def from_th2(histo, roothist):
         histo.sumW2[coord] = roothist.GetBinError(*coord) ** 2
     histo.xtitle = roothist.GetXaxis().GetTitle()
     histo.ytitle = roothist.GetYaxis().GetTitle()
-    # set styles
-    histo.color = roothist.GetLineColor()
-    histo.linestyle = roothist.GetLineStyle()
-    histo.linewidth = roothist.GetLineWidth()
-    histo.markerstyle = roothist.GetMarkerStyle()
-    histo.markersize = roothist.GetMarkerSize()
-    histo.binerror = roothist.GetBinErrorOption()
-    histo.fillstyle = roothist.GetFillStyle()
-    histo.alpha = None
+    # set styles and store in the histogram metadata
+    style = {
+        "color" : roothist.GetLineColor(),
+        "linestyle" : roothist.GetLineStyle(),
+        "linewidth" : roothist.GetLineWidth(),
+        "markerstyle" : roothist.GetMarkerStyle(),
+        "markersize" : roothist.GetMarkerSize(),
+        "binerror" : roothist.GetBinErrorOption(),
+        "fillstyle" : roothist.GetFillStyle(),
+        "alpha" : None
+    }
+    histo.metadata["style"] = style

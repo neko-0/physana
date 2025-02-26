@@ -8,11 +8,14 @@ from tqdm import tqdm
 from pathlib import Path
 from matplotlib import pyplot
 from cycler import cycler
+
 from . import histManipulate
 from .plotMaker import PlotMaker, PlotJob, COLOR_HEX
-from .configMgr import ConfigMgr
-from .core import Histogram, Histogram2D, SystematicBand
-from .strategies.systematics import core as syst_core
+from .configs import ConfigMgr
+from .histo import Histogram
+from .histo import Histogram2D
+from .systematics import SystematicsBand
+from .systematics import core as syst_core
 from .backends import RootBackend
 
 try:

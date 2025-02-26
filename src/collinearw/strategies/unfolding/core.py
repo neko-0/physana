@@ -14,7 +14,7 @@ from .. import abcd
 from ... import utils
 from ... import histManipulate
 from ...backends import RootBackend
-from ...core import iter_histograms
+from ...histo.histo_alg import iter_histograms
 from . import metadata
 from . import plot
 

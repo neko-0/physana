@@ -1,308 +1,20 @@
-"""
-class for handling serialization of class object into various format
-"""
-
-import pickle
-import klepto
 import json
-import shelve
 import yaml
-import concurrent.futures
-import multiprocessing
-import asyncio
-import aiofiles
 import uproot
 import numpy as np
 import ast
 import copy
 import collections
-import gc
 import logging
 from pathlib import Path
 
-from . import core
-
-sem = asyncio.Semaphore(10)
+from .base import SerializationBase
+from ..histo import Histogram
+from ..systematics.syst_band import SystematicsBand
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
-
-
-def _pickle_save(data, name, *args, **kwargs):
-    name = Path(name)
-    name.parent.mkdir(parents=True, exist_ok=True)
-    with open(name, "wb") as f:
-        pickle.dump(data, f, pickle.HIGHEST_PROTOCOL, *args, **kwargs)
-    return name
-
-
-async def async_read_file(file):
-    async with sem:
-        async with aiofiles.open(file, "rb") as f:
-            return await f.read()
-
-
-def async_read_files(files):
-    pending = [async_read_file(file) for file in files]
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(asyncio.gather(*pending))
-
-
-def async_from_pickles(files, *args, **kwargs):
-    pending = (async_read_file(file) for file in files)
-    loop = asyncio.get_event_loop()
-    for fdata in loop.run_until_complete(asyncio.gather(*pending)):
-        yield pickle.loads(fdata, *args, **kwargs)
-
-
-def from_pickles(files, *args, **kwargs):
-    for file in files:
-        with open(file, "rb") as f:
-            data = f.read()
-        yield pickle.loads(data, *args, **kwargs)
-
-
-class SerializationBase:
-    def to_pickle(self, data, name, *args, **kwargs):
-        gc.disable()
-        name = Path(name)
-        name.parent.mkdir(parents=True, exist_ok=True)
-        with open(name, "wb") as f:
-            pickle.dump(data, f, pickle.HIGHEST_PROTOCOL, *args, **kwargs)
-            gc.enable()
-
-    def from_pickle(self, name, *args, **kwargs):
-        gc.disable()
-        with open(name, "rb") as f:
-            data = pickle.load(f, *args, **kwargs)
-            gc.enable()
-            return data
-
-    def to_pickles(self, data, name, *args, **kwargs):
-        """
-        use for dumping more than one objects.
-        """
-        gc.disable()
-        name = Path(name)
-        name.parent.mkdir(parents=True, exist_ok=True)
-        with open(name, "wb") as f:
-            for datum in data:
-                pickle.dump(datum, f, pickle.HIGHEST_PROTOCOL, *args, **kwargs)
-            gc.enable()
-
-    def from_pickles(self, name, *args, **kwargs):
-        """
-        loading more than one objects, return a generator.
-        """
-        with open(name, "rb") as f:
-            while True:
-                try:
-                    yield pickle.load(f, *args, **kwargs)
-                except EOFError:
-                    break
-
-    def load_nth_pickle(self, name, n, *args, **kwargs):
-        with open(name, "rb") as f:
-            if n <= 1:
-                return pickle.load(f, *args, **kwargs)
-            current_obj = 1
-            bstream = f.read()
-            loc = 0
-            while bstream:
-                nloc = bstream.find(b'.\x80\x05\x95')
-                if nloc == -1:
-                    break
-                current_obj += 1
-                loc += nloc + 1
-                f.seek(loc)
-                if current_obj == n:
-                    break
-                bstream = f.read()
-
-            return pickle.load(f, *args, **kwargs)
-
-    def to_shelve(self, data: dict, name, *args, **kwargs):
-        name = Path(name)
-        name.parent.mkdir(parents=True, exist_ok=True)
-        name = str(name.resolve())
-        with shelve.open(name, *args, **kwargs) as m_shelf:
-            for datum in data:
-                m_shelf[repr(datum)] = data[datum]
-
-    def from_shelve(self, name, *args, **kwargs):
-        try:
-            return shelve.open(name, *args, **kwargs)
-        except Exception as _err:
-            raise IOError(f"unable to read {name}") from _err
-
-    def to_yaml(self, data, name):
-        with open(name, "w+") as ofile:
-            ofile.write(yaml.dump(data, default_flow_style=None))
-            ofile.write("\n")
-
-    def to_json(self, data, name):
-        raise NotImplementedError("to json format is not implemented")
-
-    def from_json(name):
-        raise NotImplementedError("from json format is not implemented")
-
-    def to_txt(data, name):
-        raise NotImplementedError("to txt format is not implemented")
-
-    def from_txt(name):
-        raise NotImplementedError("from txt format is not impletmentd")
-
-
-class SerialConfig(SerializationBase):
-    def to_klepto(self, config, name, archive_type="dir_archive", *args, **kwargs):
-        kwargs.setdefault("protocol", pickle.HIGHEST_PROTOCOL)
-        config_generator = config.self_split("process", copy=False)
-        archive_method = getattr(klepto.archives, archive_type)
-        data = {}
-        for i, config in enumerate(config_generator):
-            data[f"id{i}"] = config
-        cache = archive_method(name, data, *args, **kwargs)
-        cache.dump()
-
-    def to_shelve(self, config, name, *args, **kwargs):
-        name = Path(name)
-        name.parent.mkdir(parents=True, exist_ok=True)
-        name = str(name.resolve())
-        with shelve.open(name, flag="n", *args, **kwargs) as m_shelf:
-            for id, process in enumerate(config.self_split("process", copy=False)):
-                m_shelf[f"id{id}"] = process
-
-    def from_shelve(self, name, *args, **kwargs):
-        output = []
-        with shelve.open(name, *args, **kwargs) as m_shelf:
-            for id in m_shelf.keys():
-                output.append(m_shelf[id])
-        return output
-
-    def to_dir(self, config, name, nworkers=8):
-        split_type = "process"
-        name = Path(name).resolve()
-        config_generator = config.self_split(split_type, copy=False)
-        file_map = {}
-        nfiles = 0
-
-        meta_data_path = Path(f"{name}/metadata").resolve()
-        meta_data = {}
-        meta_data["header"] = {
-            "source": f"{config.out_path}/{config.ofilename}",
-            "n_process_sets": len(config.process_sets),
-            "process_name": config.list_processes(),
-            "split_type": split_type,
-            "nfiles": nfiles,
-            "backend": "pickle",
-            "metadata_path": str(meta_data_path),
-        }
-        meta_data["content"] = file_map
-        with open(f"{meta_data_path}.json", "w") as fp:
-            json.dump(meta_data, fp)
-
-        futures = []
-        with concurrent.futures.ProcessPoolExecutor(
-            nworkers, mp_context=multiprocessing.get_context('forkserver')
-        ) as exe:
-            for i, m_config in enumerate(config_generator):
-                config_name = Path(f"{name}/id{i}.pkl")
-                future = exe.submit(_pickle_save, m_config, config_name)
-                futures.append(future)
-                nfiles += 1
-                meta_data["header"]["nfiles"] = nfiles
-                file_map[f"{config_name.resolve()}"] = m_config.name
-            for i, future in enumerate(concurrent.futures.as_completed(futures)):
-                config_name = future.result()
-                ofilename = f"{config_name.resolve()}"
-                name = file_map.pop(ofilename)
-                file_map[f"{name}"] = ofilename
-                if i % 100 == 0:
-                    print(f"saved {i}/{nfiles}")
-                    with open(f"{meta_data_path}.json", "w") as fp:
-                        json.dump(meta_data, fp)
-
-        with open(f"{meta_data_path}.json", "w") as fp:
-            json.dump(meta_data, fp)
-
-    def from_pickles(self, files, *args, **kwargs):
-        config = None
-        configs = async_from_pickles(files, *args, **kwargs)
-        for _config in configs:
-            if config is None:
-                config = _config
-            else:
-                config.add(_config)
-        return config
-
-    def to_dict(self, config):
-        pset_s = SerialProcessSet().to_dict
-        config_dict = {}
-        config_dict["metadata"] = {
-            "ofilename": config.ofilename,
-            "src_path": config.src_path,
-            "out_path": config.out_path,
-        }
-        config_dict["process_sets"] = {x.name: pset_s(x) for x in config.process_sets}
-
-        return config_dict
-
-
-class SerialProcessSet(SerializationBase):
-    def to_dict(self, pset):
-        process_s = SerialProcess().to_dict
-        pset_dict = {
-            "name": pset.name,
-            "nominal": process_s(pset.nominal) if pset.nominal else None,
-        }
-        pset_dict["computed_systematics"] = {
-            x: process_s(y) for x, y in pset.computed_systematics.items()
-        }
-        pset_dict["systematics"] = [process_s(x) for x in pset.systematics]
-
-        return pset_dict
-
-
-class SerialProcess(SerializationBase):
-    def to_dict(self, process):
-        region_s = SerialRegion().to_dict
-        p_dict = {
-            "name": process.name,
-            "treename": process.name,
-            "selection": process.selection,
-            "weights": process.weights,
-        }
-        p_dict["regions"] = {r.name: region_s(r) for r in process}
-        syst = process.systematic
-        if syst:
-            p_dict["systematic"] = {
-                "name": syst.name,
-                "full_name": syst.full_name,
-                "source": syst.source,
-                "sys_type": syst.sys_type,
-                "handle": syst.handle,
-                "symmetrize": syst.symmetrize,
-            }
-        else:
-            p_dict["systematic"] = None
-
-        return p_dict
-
-
-class SerialRegion(SerializationBase):
-    def to_dict(self, region):
-        hist_s = SerialHistogram()
-        r_dict = {
-            "name": region.name,
-            "weights": region.weights,
-            "selection": region.selection,
-        }
-        r_dict["histograms"] = {
-            h.name: hist_s.to_dict(h) for h in region if h.hist_type != "2d"
-        }  # currently don't support 2D
-
-        return r_dict
 
 
 class SerialHistogram(SerializationBase):
@@ -434,7 +146,7 @@ class SerialHistogram(SerializationBase):
         with open(ifilename, "r") as f:
             idata = json.load(f)
         # constructe object
-        hist = getattr(core, idata["hist_class"])(**idata["basic_info"])
+        hist = getattr(Histogram, idata["hist_class"])(**idata["basic_info"])
         # load in information saved in the json file
         for name in self.content:
             if name in {"bin_content", "sumW2", "bins"}:
@@ -468,7 +180,7 @@ class SerialHistogram(SerializationBase):
                 value = components["down"].pop(comp_syst)
                 value = [x if x is not None else 0 for x in value]
                 components["down"][parsed_name] = np.array(value)
-            unflatten_band = core.SystematicBand.loads(syst)
+            unflatten_band = SystematicsBand.loads(syst)
             hist.update_systematic_band(unflatten_band)
 
         return hist
@@ -575,7 +287,7 @@ class SerialHistogram(SerializationBase):
                     "down": {(name, name, "down"): content},
                 },
             }
-            syst_band = core.SystematicBand.loads(syst_args)
+            syst_band = SystematicsBand.loads(syst_args)
             histo.update_systematic_band(syst_band)
 
         return histo
@@ -1096,7 +808,7 @@ class SerialHistogram(SerializationBase):
         nouse_syst = list(hist_bands.keys())
         for _band in hist_bands.values():
             _band.clear()
-        band = core.SystematicBand("total", "Combiner", up_syst.shape)
+        band = SystematicsBand("total", "Combiner", up_syst.shape)
         band.up = abs(up_syst)
         band.down = abs(dn_syst)
         # band.add_component("up", "Combiner", up_syst)
@@ -1238,65 +950,9 @@ class SerialHistogram(SerializationBase):
             bin_cross.append(float(ldata[2]))
             bin_error.append(float(ldata[3]))
         bin_edges.append(float(lines[-1].split()[1]))
-        histo = core.Histogram.variable_bin(data["name"], bin_edges, data["name"])
+        histo = Histogram.variable_bin(data["name"], bin_edges, data["name"])
         histo.bin_content[1:-1] = bin_cross
         histo.sumW2[1:-1] = np.array(bin_error) ** 2
         histo.bin_content[[0, -1]] = [data["underflow"][0], data["overflow"][0]]
         histo.sumW2[[0, -1]] = [data["underflow"][0] ** 2, data["overflow"][0] ** 2]
         return histo
-
-
-class SerialXSecFile(SerializationBase):
-    _data_name = {
-        "xsec_file",
-        "lumi",
-        "dsid",
-        "xsec_name",
-        "sumw_name",
-        "nominal_token",
-        "token_groups",
-        "token_groups_rule",
-        "campaign_sensitive",
-        "campaign_files",
-        "campaign_lumi",
-        "campaign_xsec",
-        "do_check_process",
-        "check_map",
-        "weight_base_token",
-        "use_process_nominal_tree",
-        "duplicated_list",
-        "duplicated_sets",
-        "duplicated_skip_campaign",
-        "duplicated_accept",
-        "remove_wsyst_ptag",
-    }
-
-    def to_json(self, xsec, fname):
-        data = {}
-        for name in self._data_name:
-            data[name] = getattr(xsec, name)
-        data["expr"] = xsec.expr()
-        fname = Path(fname)
-        fname.parent.mkdir(parents=True, exist_ok=True)
-        with open(str(fname), "w") as f:
-            json.dump(data, f)
-
-        return fname
-
-    def from_json(self, fname):
-        with open(fname) as f:
-            return json.load(f)
-
-
-class Serialization(SerializationBase):
-    _structure = {}
-    _structure["base"] = SerializationBase()
-    _structure["config"] = SerialConfig()
-    _structure["process_set"] = SerialProcessSet()
-    _structure["process"] = SerialProcess()
-    _structure["region"] = SerialRegion()
-    _structure["histogram"] = SerialHistogram()
-    _structure["xsec"] = SerialXSecFile()
-
-    def __new__(cls, key="base"):
-        return Serialization._structure[key]

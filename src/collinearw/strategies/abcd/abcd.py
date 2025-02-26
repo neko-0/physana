@@ -15,12 +15,18 @@ import pathlib
 from copy import deepcopy
 from collections import defaultdict
 
-from ...core import Region, Process, SystematicBase, Systematics, Filter
-from ...configMgr import ConfigMgr
-from ...core import Histogram, Histogram2D
-from ...histMaker import HistMaker, weight_from_hist
+from ...histo import Region
+from ...histo import Process
+from ...histo import Histogram
+from ...histo import Histogram2D
+from ...histo.tools import Filter
+from ...systematics import SystematicsBase
+from ...systematics import Systematics
+from ...configs import ConfigMgr
+from ...histmaker import HistMaker
+from ...histmaker.histmaker import weight_from_hist
+from ...histmaker.interface import refill_process
 from ...serialization import Serialization
-from ...run_HistMaker import refill_process
 from ...plotMaker import PlotMaker
 
 # import fnmatch

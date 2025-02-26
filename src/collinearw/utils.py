@@ -1,9 +1,7 @@
 import sys
 import os
 import warnings
-import formulate
 from contextlib import contextmanager
-from functools import lru_cache
 import packaging.version
 import numpy as np
 
@@ -26,62 +24,6 @@ try:
     import ROOT
 except ImportError:
     warnings.warn("Cannot import ROOT module!")
-
-
-class RecursionLimit:
-    __slot__ = ("old_limit", "limit")
-
-    def __init__(self, limit):
-        self.old_limit = sys.getrecursionlimit()
-        self.limit = limit
-
-    def __enter__(self):
-        sys.setrecursionlimit(self.limit)
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.setrecursionlimit(self.old_limit)
-
-
-@lru_cache(maxsize=None)
-def from_root(expr, *, rlimit=1500):
-    try:
-        with RecursionLimit(rlimit):  # pyparsing can reach the limit for long expr
-            return formulate.from_root(expr)
-    except formulate.parser.ParsingException as _error:
-        raise Exception(f"unable to parse {expr} due to pyparsing") from _error
-    except Exception as _error:
-        raise Exception(f"unable to parse {expr}") from _error
-
-
-@lru_cache(maxsize=None)
-def from_numexpr(expr):
-    try:
-        return formulate.from_numexpr(expr)
-    except formulate.parser.ParsingException as _error:
-        raise Exception(f"unable to parse {expr} due to pyparsing") from _error
-    except Exception as _error:
-        raise Exception(f"unable to parse {expr}") from _error
-
-
-@lru_cache(maxsize=None)
-def to_numexpr(expr):
-    if expr:
-        return from_root(expr).to_numexpr()
-    return expr
-
-
-@lru_cache(maxsize=None)
-def _expr_var(expr):
-    """
-    converting ROOT expression into set of variables
-    """
-    for i in range(5):  # maximum attempt
-        try:
-            return set(from_root(expr).variables)
-        except Exception as _err:
-            if i < 4:
-                continue
-            raise _err
 
 
 @contextmanager

@@ -1,7 +1,7 @@
-from ...core import Histogram
-from . import plot
 import numpy as np
 
+from ...histo import Histogram
+from . import plot
 
 def get_xsec_uncert(
     observable,

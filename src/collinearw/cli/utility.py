@@ -6,7 +6,7 @@ from glob import glob
 from pathlib import Path
 from .lazy_import import lazy_import as lazy
 
-configMgr = lazy("collinearw.configMgr")
+configMgr = lazy("collinearw.configs.base")
 unfolding = lazy("collinearw.strategies.unfolding")
 
 logger = logging.getLogger(__name__)

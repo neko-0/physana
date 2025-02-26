@@ -14,10 +14,10 @@ from pathlib import Path
 
 import numpy as np
 
-from . import strategies
-from .histMaker import HistMaker, filter_missing_ttree
-from .configMgr import ConfigMgr
-from .core import SystematicBase
+from .histmaker import HistMaker, filter_missing_ttree
+from .. import strategies
+from ..configs import ConfigMgr
+from ..systematics import SystematicsBase
 
 
 logging.basicConfig()
@@ -788,7 +788,7 @@ def refill_process(
     # remove processes that are going to be refilled.
     for p in process:
         if _syst_full_name and p.systematic is None:
-            p.systematic = SystematicBase(
+            p.systematic = SystematicsBase(
                 _syst_name, _syst_full_name, "dummy", _syst_type
             )
         config.remove_process(p.name, systematic=_syst_full_name)

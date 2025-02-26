@@ -1,6 +1,9 @@
 import pytest
-from collinearw import ConfigMgr, Process, ProcessSet
-from collinearw import Systematics
+
+from collinearw import ConfigMgr
+from collinearw import ProcessSet
+from collinearw import Process
+from collinearw.systematics import Systematics
 
 
 def test_configMgr_interfaces():
@@ -48,9 +51,7 @@ def test_configMgr_interfaces():
 
     # case where a Process instance has systematic
     sys_process = Process("zjets")
-    sys_process.systematic = Systematics(
-        "dummy_sys", "dummy_tree", "dummy_weight", "dummy_source", sys_type="dummy_type"
-    )
+    sys_process.systematics = Systematics("dummy_sys", "dummy_type")
     # a ProcessSet will be created during append
     # but no nominal in this case
     config.append_process(sys_process)

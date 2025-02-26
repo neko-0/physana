@@ -8,7 +8,8 @@ import pathlib
 import copy
 import logging
 
-from .core import Histogram, Histogram2D
+from .histo import Histogram
+from .histo import Histogram2D
 from .backends import RootBackend
 
 logging.basicConfig()
