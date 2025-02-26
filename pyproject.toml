@@ -11,14 +11,14 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-name = "tcadana"
+name = "physana"
 dynamic = ["version", "readme"]
-description = "Python tools for analyzing TCAD data"
+description = "Python tools for ntuple data"
 license = { text = "Apache License 2.0" }
 requires-python = ">=3.8, <3.14"
 authors = [{ name = "Yuzhan Zhao", email = "yuzhan.zhao@cern.ch" }]
 maintainers = [{ name = "Yuzhan Zhao", email = "yuzhan.physics@gmail.com" }]
-keywords = ["tcad", "physics", "si devices", "analysis"]
+keywords = ["physics", "ntuples", "analysis"]
 
 classifiers = [
   "Programming Language :: Python :: 3",
