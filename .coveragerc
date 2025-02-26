@@ -1,6 +1,6 @@
 [run]
 branch = True
-source = src/collinearw
+source = src/physana
 
 [report]
 exclude_lines =

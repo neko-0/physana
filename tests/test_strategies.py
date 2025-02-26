@@ -1,11 +1,11 @@
-import collinearw
-import collinearw.strategies.unfolding
-import collinearw.strategies.unfolding.metadata
+import physana
+import physana.strategies.unfolding
+import physana.strategies.unfolding.metadata
 import logging
 
 
 def test_unfolding_add_regions(mock_configMgr):
-    collinearw.strategies.unfolding.add_regions(
+    physana.strategies.unfolding.add_regions(
         mock_configMgr,
         "unfold_A",
         baseline_selection="baseline_selection",
@@ -29,7 +29,7 @@ def test_unfolding_add_regions(mock_configMgr):
 
 
 def test_unfolding_add_observables(mock_configMgr):
-    collinearw.strategies.unfolding.add_observables(
+    physana.strategies.unfolding.add_observables(
         mock_configMgr,
         "lep1Pt",
         "lep1TruthPt",
@@ -52,7 +52,7 @@ def test_unfolding_add_observables(mock_configMgr):
 
 
 def test_unfolding_add_regions_twice(mock_configMgr, caplog):
-    collinearw.strategies.unfolding.add_regions(
+    physana.strategies.unfolding.add_regions(
         mock_configMgr,
         "unfold_A",
         baseline_selection="baseline_selection",
@@ -63,8 +63,8 @@ def test_unfolding_add_regions_twice(mock_configMgr, caplog):
         weight_truth="weight_truth",
         weight_reco="weight_reco",
     )
-    with caplog.at_level(logging.WARNING, 'collinearw.strategies.unfolding'):
-        collinearw.strategies.unfolding.add_regions(
+    with caplog.at_level(logging.WARNING, 'physana.strategies.unfolding'):
+        physana.strategies.unfolding.add_regions(
             mock_configMgr,
             "unfold_A",
             baseline_selection="baseline_selection2",
@@ -88,7 +88,7 @@ def test_unfolding_add_regions_twice(mock_configMgr, caplog):
 
 
 def test_unfolding_add_observables_twice(mock_configMgr, caplog):
-    collinearw.strategies.unfolding.add_observables(
+    physana.strategies.unfolding.add_observables(
         mock_configMgr,
         "lep1Pt",
         "lep1TruthPt",
@@ -97,8 +97,8 @@ def test_unfolding_add_observables_twice(mock_configMgr, caplog):
         500,
         "Leading lepton p_{T} [GeV]",
     )
-    with caplog.at_level(logging.WARNING, 'collinearw.strategies.unfolding'):
-        collinearw.strategies.unfolding.add_observables(
+    with caplog.at_level(logging.WARNING, 'physana.strategies.unfolding'):
+        physana.strategies.unfolding.add_observables(
             mock_configMgr,
             "lep1Pt",
             "lep1TruthPt2",
@@ -123,16 +123,16 @@ def test_unfolding_metatada_check(mock_configMgr, caplog):
         'regions': {'duplicate_region': {}},
         'observables': {'duplicate_observable': {}},
     }
-    with caplog.at_level(logging.WARNING, 'collinearw.strategies.unfolding'):
-        assert collinearw.strategies.unfolding.metadata.has(
+    with caplog.at_level(logging.WARNING, 'physana.strategies.unfolding'):
+        assert physana.strategies.unfolding.metadata.has(
             mock_configMgr, 'regions', 'duplicate_region'
         )
     assert (
         "already registered" in caplog.text
     ), "No warning raised when checking duplicate regions"
     caplog.clear()
-    with caplog.at_level(logging.WARNING, 'collinearw.strategies.unfolding'):
-        assert collinearw.strategies.unfolding.metadata.has(
+    with caplog.at_level(logging.WARNING, 'physana.strategies.unfolding'):
+        assert physana.strategies.unfolding.metadata.has(
             mock_configMgr, 'observables', 'duplicate_observable'
         )
     assert (
@@ -141,7 +141,7 @@ def test_unfolding_metatada_check(mock_configMgr, caplog):
 
 
 def test_unfolding_metadata_save(mock_configMgr):
-    assert collinearw.strategies.unfolding.metadata.save(
+    assert physana.strategies.unfolding.metadata.save(
         mock_configMgr, 'regions', 'my_region', {'hello': 'world'}
     )
     assert mock_configMgr.meta_data['unfold']['regions']['my_region'] == {

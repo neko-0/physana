@@ -1,6 +1,6 @@
 import pytest
 
-from collinearw import ConfigMgr
+from physana import ConfigMgr
 
 
 def test_systematics_preparation():

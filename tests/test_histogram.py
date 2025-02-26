@@ -2,8 +2,7 @@ import pytest
 import numpy as np
 import sys
 
-from collinearw import Histogram
-from collinearw import Histogram2D
+from physana import Histogram, Histogram2D
 
 try:
     import ROOT

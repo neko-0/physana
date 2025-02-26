@@ -1,7 +1,5 @@
-from collinearw import Process
-from collinearw import Region
-from collinearw import Histogram
-from collinearw.histo.tools import Filter
+from physana import Process, Region, Histogram
+from physana.histo.tools import Filter
 
 
 def test_passthru():

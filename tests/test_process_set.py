@@ -1,7 +1,7 @@
 import pytest
 
-from collinearw import ProcessSet
-from collinearw.systematics import Systematics
+from physana import ProcessSet
+from physana.systematics import Systematics
 
 
 def test_systematics_duplication():

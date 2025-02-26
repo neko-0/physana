@@ -1,9 +1,7 @@
 import pytest
 
-from collinearw import ConfigMgr
-from collinearw import ProcessSet
-from collinearw import Process
-from collinearw.systematics import Systematics
+from physana import ConfigMgr, ProcessSet, Process
+from physana.systematics import Systematics
 
 
 def test_configMgr_interfaces():

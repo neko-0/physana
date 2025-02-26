@@ -1,11 +1,7 @@
 import numpy as np
 import copy
 
-from collinearw import HistManipulate
-from collinearw import ConfigMgr
-from collinearw import Process
-from collinearw import Region
-from collinearw import Histogram
+from physana import HistManipulate, ConfigMgr, Process, Region, Histogram
 
 
 def test_subtract_mc():

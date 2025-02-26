@@ -1,7 +1,76 @@
 [build-system]
 # Minimum requirements for the build system to execute.
-requires = ["wheel", "setuptools>=30.3.0", "attrs>=17.1", "setuptools_scm", "fastentrypoints"]
+requires = [
+  "wheel",
+  "setuptools>=30.3.0",
+  "attrs>=17.1",
+  "setuptools_scm",
+  "fastentrypoints",
+]
 build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "tcadana"
+dynamic = ["version", "readme"]
+description = "Python tools for analyzing TCAD data"
+license = { text = "Apache License 2.0" }
+requires-python = ">=3.8, <3.14"
+authors = [{ name = "Yuzhan Zhao", email = "yuzhan.zhao@cern.ch" }]
+maintainers = [{ name = "Yuzhan Zhao", email = "yuzhan.physics@gmail.com" }]
+keywords = ["tcad", "physics", "si devices", "analysis"]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  'click',
+  'formulate',
+  'tabulate',
+  'numexpr',
+  'numpy',
+  'uproot',
+  'awkward',
+  'tqdm',
+  'pandas',
+  'pyhf[minuit]',
+  'klepto',
+  'jsonnet@https://github.com/google/jsonnet/zipball/master',
+  'rich',
+  'aiofiles',
+  'numba',
+  'lazy_loader',
+]
+
+[project.urls]
+Homepage = "https://github.com/neko-0/physana.git"
+
+[project.scripts]
+tcadana = "physana.cli:physana"
+
+[project.optional-dependencies]
+shellcomplete = ["click_completion"]
+develop = ["bumpversion", "black", "pyflakes"]
+test = ["pytest", "pytest-cov", "coverage", "pytest-mock"]
+docs = ["sphinx", "sphinx_rtd_theme"]
+unfolding = [
+  "RooUnfold @ git+https://gitlab.cern.ch/scipp/collinear-w/RooUnfold.git@bug_fixed/dimension_normalizaion",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "physana.version.__version__" }
+readme = { file = "README.md" }
+
+[tool.setuptools]
+packages = { find = { where = ["src"], exclude = ["tests"] } }
+package-dir = { "" = "src" }
+include-package-data = true
 
 [tool.black]
 line-length = 88
@@ -18,7 +87,7 @@ force-exclude = '''
   | build
   | dist
   | RooUnfold
-  | example_configs
+  | configs
   | example
   | docs
   | data

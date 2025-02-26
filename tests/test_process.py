@@ -1,9 +1,7 @@
 import pytest
 import numpy as np
 
-from collinearw import Process
-from collinearw import Region
-from collinearw import Histogram
+from physana import Process, Region, Histogram
 
 
 def test_process_operators():

@@ -1,7 +1,6 @@
 import numpy as np
 
-from collinearw import Histogram
-from collinearw import Region
+from physana import Histogram, Region
 
 
 def test_region_add_operation():
