@@ -7,6 +7,7 @@ from pathlib import Path
 from .lazy_import import lazy_import as lazy
 
 configMgr = lazy("physana.configs.base")
+merge_tools = lazy("physana.configs.merge_tools")
 unfolding = lazy("physana.strategies.unfolding")
 
 logger = logging.getLogger(__name__)
@@ -90,43 +91,38 @@ def nevents(config, all, process, regions):
                 json.dump(output, f)
 
 
-def _merge_helper(configs, name):
-    ConfigMgr = configMgr.ConfigMgr
-    n = 5
-    buff = []
-    with concurrent.futures.ProcessPoolExecutor() as exe:
-        for i in range((len(configs) + n - 1) // n):
-            buff.append(exe.submit(ConfigMgr.merge, configs[i * n : (i + 1) * n], name))
-    output = []
-    for merged_config in concurrent.futures.as_completed(buff):
-        output.append(merged_config.result())
-    return output
+def batch_merge(configs, output_name, n=5):
+    """
+    Merge multiple config objects in parallel batches.
+    """
+    tool_merge = merge_tools.merge
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        futures = [
+            executor.submit(tool_merge, configs[i * n : (i + 1) * n])
+            for i in range((len(configs) + n - 1) // n)
+        ]
+        results = [
+            future.result() for future in concurrent.futures.as_completed(futures)
+        ]
+        merged_config = tool_merge(results)
+
+        return merged_config.save(output_name)
 
 
 @cli.command()
-@click.option("--dir", type=str, help="path to ConfigMgr files")
-@click.option("--pattern", type=str, help="file pattern")
-@click.option("--name", type=str, help="output name")
-@click.option("--mp/--no-mp", default=False, help="use mp")
-def merge(dir, pattern, name, mp):
-    ConfigMgr = configMgr.ConfigMgr
-    config_paths = glob(f"{dir}/{pattern}")
-    print("list of files:")
-    for f in config_paths:
-        print(f)
-    configs = []
-    for config_path in config_paths:
-        configs.append(ConfigMgr.open(config_path))
+@click.option("--input", type=str, help="Input ConfigMgr files")
+@click.option("--output", type=str, help="Output name")
+def merge(input, output):
+    config_open = configMgr.ConfigMgr.open
+    tool_merge = merge_tools.merge
 
-    # merged_config = ConfigMgr.merge(configs, name)
-    if mp:
-        merged_config = _merge_helper(configs, name)
-        while len(merged_config) != 1:
-            merged_config = _merge_helper(merged_config, name)
-        final_config = merged_config[0]
-    else:
-        final_config = ConfigMgr.merge(configs)
-    final_config.save(name)
+    input_configs = []
+    for x in input.replace(" ", "").split(","):
+        input_configs += glob(x)
+
+    print("list of files: \n" + "\n".join(input_configs))
+
+    tool_merge((config_open(x) for x in input_configs)).save(output)
 
 
 @cli.command()
@@ -140,20 +136,19 @@ def intersection(output, input, loadall):
     Merging ConfigMgr objects without duplication and adding of contents.
     """
     ConfigMgr = configMgr.ConfigMgr
+    tool_intersection = merge_tools.intersection
     input_configs = []
     for x in input.replace(" ", "").split(","):
         _configs = glob(x)
         input_configs += _configs
-        for y in _configs:
-            print(f"adding {y}")
-    print(f"merging total {len(input_configs)} configs to {output}")
+        print("Adding files \n" + "\n".join(_configs))
+    print(f"Merging total {len(input_configs)} config objects to {output}")
     if loadall:
         configs = (x for x in ConfigMgr.open_files(input_configs))
     else:
-        configs = (ConfigMgr.open(f) for f in input_configs)
-    merged = ConfigMgr.intersection(configs, copy=False)
-    merged.set_output_location(".")
-    merged.save(output)
+        config_open = ConfigMgr.open
+        configs = (config_open(f) for f in input_configs)
+    tool_intersection(configs, copy=False).save(output)
 
 
 @cli.command()
