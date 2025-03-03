@@ -86,10 +86,13 @@ class SumWeightTool:
         idx = np.searchsorted(unique_pairs[0], dsid)
         idx_run = np.searchsorted(unique_pairs[1], run_number)
 
-        sum_weights_dict = self.sum_weights_dict[self.syst]
+        # sum_weights_dict = self.sum_weights_dict[self.syst]
+        w_get = self.sum_weights_dict[self.syst].get
+
+        w_values = np.array([w_get(key) for key in zip(dsid, run_number)])
 
         return np.take(
-            list(sum_weights_dict.values()),
+            w_values.ravel(),
             np.ravel_multi_index(
                 (idx, idx_run), (len(unique_pairs[0]), len(unique_pairs[1]))
             ),
