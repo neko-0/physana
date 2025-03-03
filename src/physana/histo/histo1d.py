@@ -286,8 +286,9 @@ class Histogram(HistogramBase):
         """
         set all the negative bin content to zero
         """
-        self._sumW2[self._bin_content < 0] = 0
-        self._bin_content[self._bin_content < 0] = 0
+        mask = self._bin_content < 0
+        self._sumW2[mask] = 0
+        self._bin_content[mask] = 0
 
     def nan_to_num(self, nan=0.0, posinf=0, neginf=0):
         np.nan_to_num(self._bin_content, False, nan, posinf, neginf)
