@@ -75,14 +75,14 @@ def _region_stack(
     sub_dir = f"{output}/{region_name.replace('/', '_slash_')}/"
 
     try:
-        data_region = data_process.get(systematic).get_region(region_name)
+        data_region = data_process.get(systematic).get(region_name)
     except:
         data_region = None
 
     mc_region_dict = {}
     for mc in mc_processes:
         try:
-            mc_region_dict[mc.name] = mc.get(systematic).get_region(region_name)
+            mc_region_dict[mc.name] = mc.get(systematic).get(region_name)
         except KeyError:
             logger.warning(f"{mc.name}/{systematic} has no region {region_name}")
             continue
@@ -96,8 +96,8 @@ def _region_stack(
             band_histogram = None
             if include_systematic_band and external_syst_process:
                 try:
-                    band_region = external_syst_process.get_region(region_name)
-                    band_histogram = band_region.get_observable(obs)
+                    band_region = external_syst_process.get(region_name)
+                    band_histogram = band_region.get(obs)
                     if hasattr(band_histogram, "systematic_band"):
                         m_bands = band_histogram.systematic_band
                         if m_bands:
@@ -116,15 +116,15 @@ def _region_stack(
                     logger.warning(f"unable to get syst band {region_name}/{obs}")
                     pass
             elif include_systematic_band:
-                norm_region = mc_processes[0].get().get_region(region_name)
-                nominal_tot = norm_region.get_observable(obs).copy()
+                norm_region = mc_processes[0].get().get(region_name)
+                nominal_tot = norm_region.get(obs).copy()
                 if include_systematic_band and getattr(nominal_tot, "systematic_band"):
                     stats_error = nominal_tot.statistical_error()
                     for band in nominal_tot.systematic_band.values():
                         band.scale_components(nominal_tot.bin_content)
                     for mc in mc_processes[1:]:
                         try:
-                            other = mc.get().get_region(region_name).get_observable(obs)
+                            other = mc.get().get(region_name).get(obs)
                             nominal_tot += other
                             other_stats_error = other.statistical_error()
                             stats_error["up"] = np.sqrt(
@@ -162,7 +162,7 @@ def _region_stack(
 
             if data_region:
                 try:
-                    data_hist = data_region.get_observable(obs)
+                    data_hist = data_region.get(obs)
                 except KeyError:
                     continue
                 if isinstance(data_hist, Histogram2D):
@@ -192,7 +192,7 @@ def _region_stack(
                     # try with legend title
                     mc_name = mc_region.parent.title or mc_name
                 try:
-                    mc_hist_dict[mc_name] = mc_region.get_observable(obs)
+                    mc_hist_dict[mc_name] = mc_region.get(obs)
                     mc_hist_dict[mc_name].remove_negative_bin()
                     mc_hist_dict[mc_name].nan_to_num()
                 except KeyError:
@@ -200,7 +200,7 @@ def _region_stack(
                     continue
             if not mc_hist_dict:
                 if data_region:
-                    mc_hist_dict[data_process.name] = data_region.get_observable(obs)
+                    mc_hist_dict[data_process.name] = data_region.get(obs)
                 else:
                     logger.warning("mc hist dict is empty")
                     continue
@@ -234,8 +234,8 @@ def _region_stack(
                 m_yrange = yrange
 
             if data_plotJob:
-                _xmin = data_region.get_observable(obs).bins[0]
-                _xmax = data_region.get_observable(obs).bins[-1]
+                _xmin = data_region.get(obs).bins[0]
+                _xmax = data_region.get(obs).bins[-1]
                 ratio = my_plotMaker.ratio_plot(
                     mc_stack_plotJob,
                     data_plotJob,
@@ -740,7 +740,7 @@ def plot_ratio(
             legend = my_plotMaker.make_legend(0.45, 0.65, 0.65, 0.90)
 
             try:
-                base = base_process.get_region(region_name).get_observable(obs)
+                base = base_process.get(region_name).get(obs)
                 if isinstance(base, Histogram2D):
                     continue
                 base.remove_negative_bin()
@@ -759,7 +759,7 @@ def plot_ratio(
                 try:
                     m_process = my_config.get_process(comp_p)
                     title = m_process.title
-                    comp_hist = m_process.get_region(region_name).get_observable(obs)
+                    comp_hist = m_process.get(region_name).get(obs)
                     comp_hist.remove_negative_bin()
                     comp_hist = comp_hist.root
                 except:
@@ -866,8 +866,8 @@ def run_ABCD_ABCompare(
             my_plotMaker = PlotMaker(my_configMgr, output_tag)
             rA_name, _ = case["A"]
             rB_name, _ = case["B"]
-            region_A = process.get_region(rA_name)
-            region_B = process.get_region(rB_name)
+            region_A = process.get(rA_name)
+            region_B = process.get(rB_name)
             # name_tag = f"{process.name}-{tag}"
             for obs in region_A.histograms:
                 my_plotMaker.compare_2regions(
@@ -939,9 +939,7 @@ def plot_pset_relative_systematics(
                         band.scale_components(obs.bin_content)
                     for proc in processes[1:]:
                         try:
-                            other = proc.get_region(region.name).get_observable(
-                                obs.name
-                            )
+                            other = proc.get(region.name).get(obs.name)
                         except KeyError:
                             continue
                         obs += other
@@ -1064,7 +1062,7 @@ def plot_purity(
             legend = RootBackend.make_legend(x1=0.46, x2=0.78, y1=0.65, y2=0.87)
 
             for signal in signals:
-                hResponse = signal.get_region(region_name).get_histogram(hist_name)
+                hResponse = signal.get(region_name).get_histogram(hist_name)
 
                 purity = hResponse.purity(axis).root
                 RootBackend.apply_process_styles(purity, signal)

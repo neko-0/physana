@@ -112,7 +112,7 @@ class PlotMaker(object):
 
         self._output_dir = ""
         if configMgr is not None:
-            self.output_dir = f"{configMgr.out_path}/{output_dir}"
+            self.output_dir = f"{configMgr.output_path}/{output_dir}"
         else:
             self.output_dir = f"./{output_dir}"
 
@@ -433,9 +433,11 @@ class PlotMaker(object):
                 xrange = (histo.bins[0], histo.bins[-1])
                 nbin = len(histo.bins) - 1
 
-            my_color = histo.parent.parent.color  # or color_dict.get(
-            #    color, list(color_dict)[-1]
-            # )
+            style = histo.root_parent().metadata.get("style", None)
+            if style is None:
+                my_color = color_dict.get(color, list(color_dict)[-1])
+            else:
+                my_color = style.color
 
             my_histo.Draw("goff")
             my_histo.SetLineWidth(0)
@@ -541,15 +543,22 @@ class PlotMaker(object):
         if not isinstance(plot_job_list, list):
             plot_job_list = [plot_job_list]
 
+        hline = None
+        _histo_xmin = None
+        _histo_xmax = None
+
         for entry, plot_job in enumerate(plot_job_list):
             histo = plot_job.histogram
-            # histo.GetXaxis().SetRange(-1, 0) # why do I need this?
+            histo.GetXaxis().SetRange(0, 0)  # why do I need this?
             if entry == 0:
-                histo.Draw(f"{plot_job.draw_opt}")
+                _histo_xmin = histo.GetXaxis().GetXmin()
+                _histo_xmax = histo.GetXaxis().GetXmax()
                 # histo.GetXaxis().SetNdivisions(310)
                 if xrange:
-                    histo.GetXaxis().SetRange(-1, 0)
                     histo.GetXaxis().SetRangeUser(*xrange)
+                else:
+                    histo.GetXaxis().SetRangeUser(_histo_xmin, _histo_xmax)
+                    histo.GetXaxis().SetLimits(_histo_xmin, _histo_xmax)
                 if yrange:
                     histo.GetYaxis().SetRangeUser(*yrange)
                 if ytitles and plot_job.name in ytitles:
@@ -559,9 +568,17 @@ class PlotMaker(object):
                     else:
                         yaxis = histo.GetYaxis()
                     yaxis.SetTitle(new_ytitle)
+                histo.Draw(f"{plot_job.draw_opt}")
             else:
-                histo.GetXaxis().SetRange(-1, 0)
                 histo.Draw(f"{plot_job.draw_opt} same")
+
+            if hline is None and hasattr(histo, "GetLowerPad"):
+                histo.GetLowerPad().cd()
+                hline = RootBackend.make_line(_histo_xmin, 1, _histo_xmax, 1)
+                histo.GetUpperRefXaxis().SetRangeUser(_histo_xmin, _histo_xmax)
+                histo.GetLowerRefXaxis().SetRangeUser(_histo_xmin, _histo_xmax)
+                hline.Draw()
+                canvas.cd()
 
         canvas.Update()
 
@@ -667,7 +684,7 @@ class PlotMaker(object):
                     _graph.SetFillColor(colors[i])
                     _graph.SetFillColorAlpha(colors[i], 0.35)
                     _graph.SetFillStyle(fill_styles[i])
-                    _graph.GetXaxis().SetRange(-1, 0)
+                    _graph.GetXaxis().SetRange(0, 0)
                     _graph.GetXaxis().SetLimits(_histo_xmin, _histo_xmax)
                     _graph.GetXaxis().SetRangeUser(_histo_xmin, _histo_xmax)
                     _graph.Draw("2 same")
@@ -678,7 +695,7 @@ class PlotMaker(object):
                     _graph.SetFillColor(colors[i])
                     _graph.SetFillColorAlpha(colors[i], 0.35)
                     _graph.SetFillStyle(fill_styles[i])
-                    _graph.GetXaxis().SetRange(-1, 0)
+                    _graph.GetXaxis().SetRange(0, 0)
                     _graph.GetXaxis().SetLimits(_histo_xmin, _histo_xmax)
                     _graph.GetXaxis().SetRangeUser(_histo_xmin, _histo_xmax)
                     _graph.Draw("2 same")
@@ -766,8 +783,8 @@ class PlotMaker(object):
         if xrange:
             h1.Draw("goff")
             h2.Draw("goff")
-            h1.GetXaxis().SetRange(-1, 0)
-            h2.GetXaxis().SetRange(-1, 0)
+            h1.GetXaxis().SetRange(0, 0)
+            h2.GetXaxis().SetRange(0, 0)
             h1.GetXaxis().SetLimits(*xrange)
             h1.GetXaxis().SetRangeUser(*xrange)
             h2.GetXaxis().SetLimits(*xrange)
@@ -787,7 +804,7 @@ class PlotMaker(object):
         logger.info("modifying axis")
         if xrange:
             logger.debug(f"setting x range to {xrange}")
-            ratio.GetXaxis().SetRange(-1, 0)
+            ratio.GetXaxis().SetRange(0, 0)
             ratio.GetXaxis().SetLimits(*xrange)
             ratio.GetXaxis().SetRangeUser(*xrange)
             # ratio.GetUpperRefObject().GetXaxis().SetLimits(*xrange)
