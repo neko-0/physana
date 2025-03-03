@@ -52,7 +52,7 @@ dependencies = [
 Homepage = "https://github.com/neko-0/physana.git"
 
 [project.scripts]
-tcadana = "physana.cli:physana"
+physana = "physana.cli:physana"
 
 [project.optional-dependencies]
 shellcomplete = ["click_completion"]
