@@ -205,6 +205,12 @@ class BaseAnalysisContainer:
     def clear_children_parent(self, *args, **kwargs):
         raise NotImplementedError
 
+    def root_parent(self):
+        parent = self.parent
+        while parent and parent.parent:
+            parent = parent.parent
+        return parent
+
 
 class AnalysisContainer(BaseAnalysisContainer):
 
