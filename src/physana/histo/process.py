@@ -18,6 +18,7 @@ class Process(AnalysisContainer):
         "treename",
         "combine_tree",
         "systematics",
+        "is_data",
         "title",
         "file_record",
         "_input_files",
@@ -71,6 +72,7 @@ class Process(AnalysisContainer):
         self.treename = treename or "reco"
         self.combine_tree = None
         self.systematics = None
+        self.is_data = dtype == "data"
         self._input_files = None
         self.file_record = set()  # keep a record of input files
         self.input_files = input_files  # setting filename via property
