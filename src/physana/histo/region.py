@@ -91,16 +91,24 @@ class Region(AnalysisContainer):
         c_self.div(rhs)
         return c_self
 
-    def effective_nevents_add(self, rhs):
+    def nevents_add(self, rhs):
+        self.total_nevents += rhs
+        self.filled_nevents += rhs
         self.effective_nevents += rhs
 
-    def effective_nevents_sub(self, rhs):
+    def nevents_sub(self, rhs):
+        self.total_nevents -= rhs
+        self.filled_nevents -= rhs
         self.effective_nevents -= rhs
 
-    def effective_nevents_mul(self, rhs):
+    def nevents_mul(self, rhs):
+        self.total_nevents *= rhs
+        self.filled_nevents *= rhs
         self.effective_nevents *= rhs
 
-    def effective_nevents_div(self, rhs):
+    def nevents_div(self, rhs):
+        self.filled_nevents /= rhs
+        self.total_nevents /= rhs
         self.effective_nevents /= rhs
 
     def _name_operation(self, rhs, op):
@@ -115,14 +123,14 @@ class Region(AnalysisContainer):
     def _apply_operation(self, rhs, operation):
         """Apply a mathematical operation to this object and another object."""
         if isinstance(rhs, (int, float, np.floating)):
-            getattr(self, f"effective_nevents_{operation}")(rhs)
+            getattr(self, f"nevents_{operation}")(rhs)
             for histogram in self:
                 getattr(histogram, operation)(rhs)
         elif not isinstance(rhs, self.__class__):
             raise TypeError(f"Invalid {operation=} with {type(rhs)=}")
         else:
             self._name_operation(rhs, operation)
-            getattr(self, f"effective_nevents_{operation}")(rhs.effective_nevents)
+            getattr(self, f"nevents_{operation}")(rhs.effective_nevents)
             for key, value in rhs._data.items():
                 if key in self._data:
                     getattr(self._data[key], operation)(value)
@@ -140,6 +148,8 @@ class Region(AnalysisContainer):
 
     def div(self, rhs):
         if isinstance(rhs, (int, float, np.floating)):
+            rhs_totle_nevents = rhs
+            rhs_fille_nevents = rhs
             rhs_effective_nevents = rhs
             for histogram in self:
                 histogram.div(rhs)
@@ -148,6 +158,8 @@ class Region(AnalysisContainer):
         else:
             if self.name != rhs.name:
                 self.name = f"{self.name}/{rhs.name}"
+            rhs_totle_nevents = rhs.total_nevents
+            rhs_fille_nevents = rhs.filled_nevents
             rhs_effective_nevents = rhs.effective_nevents
             for key, value in rhs._data.items():
                 if key in self._data:
@@ -155,8 +167,12 @@ class Region(AnalysisContainer):
                 else:
                     self._data[key] = value
         try:
+            self.total_nevents /= rhs_totle_nevents
+            self.filled_nevents /= rhs_fille_nevents
             self.effective_nevents /= rhs_effective_nevents
         except ZeroDivisionError:
+            self.total_nevents = 0
+            self.filled_nevents = 0
             self.effective_nevents = 0
 
     @property
@@ -164,11 +180,11 @@ class Region(AnalysisContainer):
         """Accessor for histograms stored in the underlying data dictionary."""
         return list(self)
 
-    def _add_histogram(self, histogram, enable_filtering=False, copy=True):
+    def _add_histogram(self, histogram, enable_filter=False, copy=True):
         if histogram.name in self._data:
             return
 
-        if enable_filtering and not histogram.filter.accept(self):
+        if enable_filter and not histogram.filter.accept(self):
             return
 
         if copy:
@@ -178,11 +194,11 @@ class Region(AnalysisContainer):
             copied_histogram = histogram
         self._data[copied_histogram.name] = copied_histogram
 
-    def _add_histograms(self, histograms, enable_filtering=False, copy=True):
+    def _add_histograms(self, histograms, enable_filter=False, copy=True):
         for histogram in histograms:
             if histogram.name in self._data:
                 continue
-            if enable_filtering and not histogram.filter.accept(self):
+            if enable_filter and not histogram.filter.accept(self):
                 continue
             if copy:
                 copied_histogram = histogram.copy()
@@ -191,7 +207,7 @@ class Region(AnalysisContainer):
                 copied_histogram = histogram
             self._data[copied_histogram.name] = copied_histogram
 
-    def append(self, histogram, enable_filtering=False, copy=True):
+    def append(self, histogram, enable_filter=False, copy=True):
         """
         Add a histogram into the region.
 
@@ -199,13 +215,13 @@ class Region(AnalysisContainer):
 
         Args:
             histogram: The histogram to be added.
-            enable_filtering: If True, filter histograms based on their filter functions.
+            enable_filter: If True, filter histograms based on their filter functions.
             copy: If True, copy the histogram before adding it to the region.
         """
         if isinstance(histogram, list):
-            self._add_histograms(histogram, enable_filtering, copy)
+            self._add_histograms(histogram, enable_filter, copy)
         else:
-            self._add_histogram(histogram, enable_filtering, copy)
+            self._add_histogram(histogram, enable_filter, copy)
 
     def update(self, histogram):
         self._data[histogram.name] = histogram
