@@ -11,6 +11,7 @@ class PMGSampleInfo:
         "k_factor",
         "xsec_unc_up",
         "xsec_unc_down",
+        "effective_xsec",
     )
 
     def __init__(
@@ -31,6 +32,8 @@ class PMGSampleInfo:
         self.xsec_unc_up = xsec_unc_up
         self.xsec_unc_down = xsec_unc_down
 
+        self.effective_xsec = ami_xsec * filter_eff * k_factor
+
 
 class PMGXsec:
     def __init__(self, xsec_file):
@@ -49,7 +52,7 @@ class PMGXsec:
         sample = self.sample_info.get(dsid)
         if sample is None:
             return 1.0
-        return sample.ami_xsec * sample.filter_eff * sample.k_factor
+        return sample.effective_xsec
 
     def reset(self):
         self.sample_info = {}
@@ -113,9 +116,9 @@ class PMGXsec:
         if isinstance(dsid, (int, np.integer)):
             return self.calculate_xsec(dsid)
         elif isinstance(dsid, (list, tuple, np.ndarray)):
+            calc_xsec = self.calculate_xsec
             dsid_array = np.asarray(dsid)
             unique_dsid, inverse_mask = np.unique(dsid_array, return_inverse=True)
-            xsec_values = np.array([self.calculate_xsec(d) for d in unique_dsid])
-            return xsec_values[inverse_mask]
+            return np.array([calc_xsec(d) for d in unique_dsid])[inverse_mask]
         else:
             raise ValueError(f'Invalid input type: {type(dsid)}')
