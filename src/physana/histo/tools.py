@@ -69,7 +69,7 @@ def _expr_var(expr):
     """
     for i in range(5):  # maximum attempt
         try:
-            return set(from_root(expr).variables)
+            return set(formulate.from_auto(expr).variables)
         except Exception as _err:
             if i < 4:
                 continue
