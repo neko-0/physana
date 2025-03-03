@@ -80,8 +80,8 @@ def split_by_processes(config, copy=True):
     psets = (x for pset in config.process_sets for x in pset)
     for p in psets:
         split_name = p.name
-        if p.systematic:
-            split_name += f"-{'_'.join(p.systematic.full_name)}"
+        if p.systematics:
+            split_name += f"-{'_'.join(p.systematics.full_name)}"
         else:
             split_name += "-nominal"
         my_config = c_config.copy(shallow=True)
@@ -99,20 +99,20 @@ def split_by_input_files(iconfig, shallow=False, batch_size=20, **_):
         for pset in sub_config.process_sets:
             assert pset.num_processes() == 1
             for p in pset:
-                if p.filename:
+                if p.input_files:
                     c_sub_config = sub_config.copy(shallow=True)
                     c_sub_config.process_sets = []
-                    for ifile in file_batch_generator(p.filename, batch_size):
+                    for ifile in file_batch_generator(p.input_files, batch_size):
                         c_p = p.copy(shallow=shallow)
-                        c_p.filename = ifile
+                        c_p.input_files = ifile
                         cc_sub_config = c_sub_config.copy(shallow=True)
                         cc_sub_config.process_sets = []
                         cc_sub_config.append_process(c_p, copy=False)
                         yield cc_sub_config
-                elif sub_config.filename:
-                    for ifile in file_batch_generator(sub_config.filename, batch_size):
+                elif sub_config.input_files:
+                    for ifile in file_batch_generator(sub_config.input_files, batch_size):
                         c_sub_config = sub_config.copy(shallow=shallow)
-                        c_sub_config.filename = {ifile}
+                        c_sub_config.input_files = {ifile}
                         yield c_sub_config
                 else:
                     yield sub_config
