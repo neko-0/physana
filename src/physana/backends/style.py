@@ -2,6 +2,7 @@ class StyleMetadata:
     __slots__ = (
         "color",
         "alpha",
+        "legendname",
         "markerstyle",
         "markersize",
         "markerstyle",
