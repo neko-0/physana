@@ -1,3 +1,6 @@
+
+# Migration still in progress. This package was used for Collinear W+jets analysis. Currently refractoring it for Run-3 and update naming scheme in new analysis release.
+
 # Collinear W+jets Plotting Scripts
 
 Python scripts for generating histograms from `ROOT.TTree` and making plots
