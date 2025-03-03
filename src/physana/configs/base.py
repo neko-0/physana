@@ -6,6 +6,7 @@ import fnmatch
 import logging
 import collections
 import concurrent.futures
+import numbers
 from time import perf_counter
 from copy import deepcopy, copy
 from pathlib import Path
@@ -57,11 +58,9 @@ class ConfigMgr:
         self.disable_pbar = False
         self.RAISE_TREENAME_ERROR = True
         self.branch_rename = None  # dict for renaming branch in the ntuple
-        self.use_cutbook_sum_weights = False
-        self.acc_cutbook_sum_weights = False
-        self.dsid_branch = "mcChannelNumber"
-        self.run_number_branch = "runNumber"
-        self.default_tree_sys = "NoSys"
+
+        # setting for sum of weight tools
+        self.sum_weights_file = None
 
         # default weighting
         self._default_wlist = []
@@ -391,6 +390,8 @@ class ConfigMgr:
                     p_branch |= self.reserve_branches(p.selection)
                 if isinstance(p.weights, str):
                     p_branch |= self.reserve_branches(p.weights)
+                elif isinstance(p.weights, numbers.Number):
+                    p.weights = f"{p.weights}"
                 else:
                     for w in p.weights:
                         p_branch |= self.reserve_branches(w)
