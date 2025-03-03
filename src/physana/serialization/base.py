@@ -1,7 +1,8 @@
 import pickle
 import shelve
+import json
 from pathlib import Path
-import gc
+
 
 import lz4.frame
 import yaml
@@ -47,37 +48,44 @@ def async_read_files(files):
     return loop.run_until_complete(asyncio.gather(*pending))
 
 
+def from_json(file, *args, **kwargs):
+    with open(file, "r") as f:
+        return json.load(f, *args, **kwargs)
+
+
+def to_json(data, file, *args, **kwargs):
+    file = Path(file)
+    file.parent.mkdir(parents=True, exist_ok=True)
+    kwargs.setdefault("indent", 4)
+    kwargs.setdefault("separators", (",", ": "))
+    with open(file, "w") as f:
+        json.dump(data, f, *args, **kwargs)
+
+    return file.resolve()
+
+
 class SerializationBase:
     def to_pickle(self, data, name, *args, **kwargs):
-        gc.disable()
         name = Path(name)
         name.parent.mkdir(parents=True, exist_ok=True)
         kwargs.setdefault("protocol", pickle.HIGHEST_PROTOCOL)
         with lz4.frame.open(name, "wb") as f:
-            pickle_stream = pickle.dump(data, *args, **kwargs)
-            f.write(pickle_stream)
-            gc.enable()
+            f.write(pickle.dumps(data, *args, **kwargs))
 
     def from_pickle(self, name, *args, **kwargs):
-        gc.disable()
         with lz4.frame.open(name) as f:
-            data = pickle.load(f, *args, **kwargs)
-            gc.enable()
-            return data
+            return pickle.load(f, *args, **kwargs)
 
     def to_pickles(self, data, name, *args, **kwargs):
         """
         use for dumping more than one objects.
         """
-        gc.disable()
         name = Path(name)
         name.parent.mkdir(parents=True, exist_ok=True)
         kwargs.setdefault("protocol", pickle.HIGHEST_PROTOCOL)
         with lz4.frame.open(name, "wb") as f:
             for datum in data:
-                pickle_stream = pickle.dumps(datum, *args, **kwargs)
-                f.write(pickle_stream)
-            gc.enable()
+                f.write(pickle.dumps(datum, *args, **kwargs))
 
     def from_pickles(self, name, *args, **kwargs):
         """
