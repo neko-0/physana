@@ -14,7 +14,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .histmaker import HistMaker, filter_missing_ttree
+from .histmaker import HistMaker
+from .tree_filter import filter_missing_ttree
 from .. import strategies
 from ..configs import ConfigMgr
 from ..systematics import SystematicsBase

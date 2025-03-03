@@ -1,21 +1,20 @@
 import uproot  # need version uproot4
 import numpy as np
-import json
 import logging
 import numbers
 import multiprocessing as mp
-import re
 from time import perf_counter
 from tqdm import tqdm
 from copy import deepcopy
 from fnmatch import fnmatch
 from numexpr import evaluate as ne_evaluate
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-from functools import partial, lru_cache
 from collections import defaultdict
 
+from .sum_weights import SumWeightTool
 from ..histo import Histogram, Histogram2D
 from ..histo.jitfunc import apply_phsp_correction, is_none_zero, parallel_nonzero_count
+from ..tools.xsec import PMGXsec
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -111,90 +110,6 @@ def weight_from_region(events, rname, process, weight_hist):
         raise TypeError(f"Invalid type weight_hist:{type(weight_hist)}")
 
 
-@lru_cache(maxsize=None)
-def get_cutbook_sum_weights(file_name, dataset_ids, run_numbers):
-    """
-    Retrieve the sum of weights from the cutbook for the specified dataset IDs and run numbers.
-    TODO : need to hanlde cases with systematics
-
-    Args:
-        file_name (str): The name of the ROOT file to open.
-        dataset_ids (iterable): An iterable of dataset IDs.
-        run_numbers (iterable): An iterable of run numbers.
-
-    Returns:
-        dict: A dictionary where keys are (dataset_id, run_number) tuples and values are the sum of weights.
-    """
-    with uproot.open(file_name) as root_file:
-        sum_weights = {}
-        for dsid, run in zip(dataset_ids, run_numbers):
-            cutbook_name = f"CutBookkeeper_{dsid}_{run}_NOSYS"
-            sum_weights[(dsid, run)] = root_file[cutbook_name].values()[1]
-        return sum_weights
-
-
-def get_sum_weights(dsid, run_number=None, tfile_name=None, sum_weights_dict=None):
-    """
-    Retrieve the sum of weights for the given DSID and run number from the specified TFile.
-
-    This function retrieves the sum of weights for a batch of events, allowing for optional
-    use of a pre-computed sum of weights dictionary. It can handle unique DSID and run number
-    combinations, and optionally uses a caching mechanism for performance optimization.
-    TODO : need to handle cases with systematics
-
-    Args:
-        dsid (ndarray): Array of dataset IDs (DSID) for the events.
-        run_number (ndarray, optional): Array of run numbers for the events.
-            If None, only DSID is used to retrieve weights.
-        tfile_name (str, optional): The name of the TFile containing weight information.
-            If None, the function will use a pre-computed sum of weights dictionary.
-        sum_weights_dict (dict, optional): A dictionary of pre-computed sum of weights
-            with keys as (dsid, run_number) tuples. Defaults to None.
-
-    Returns:
-        ndarray: An array of the sum of weights for each event, corresponding to the input DSID
-        and run number.
-    """
-
-    if tfile_name is None and sum_weights_dict is None:
-        raise ValueError("Either tfile_name or sum_weights_dict must be provided.")
-
-    if run_number is not None:
-        unique_pairs = np.unique((dsid, run_number), axis=1)
-        if sum_weights_dict is None:
-            sum_weights_dict = get_cutbook_sum_weights(
-                tfile_name, tuple(unique_pairs[0]), tuple(unique_pairs[1])
-            )
-        idx = np.searchsorted(unique_pairs[0], dsid)
-        idx_run = np.searchsorted(unique_pairs[1], run_number)
-        return np.take(
-            list(sum_weights_dict.values()),
-            np.ravel_multi_index(
-                (idx, idx_run), (len(unique_pairs[0]), len(unique_pairs[1]))
-            ),
-        )
-
-    if sum_weights_dict is None:
-        raise ValueError("sum_weights_dict is required when run_number is None")
-
-    unique_dsid, inverse_mask = np.unique(dsid, return_inverse=True)
-    sum_weights = np.array([sum_weights_dict[d] for d in unique_dsid])
-    return sum_weights[inverse_mask]
-
-
-def sum_weights_from_files(tfile_names):
-    sum_weights = {}
-    for file in tfile_names:
-        with uproot.open(file) as root_file:
-            for obj_name in root_file.keys():
-                match = re.match(r"CutBookkeeper_(\d+)_(\d+)_NOSYS", obj_name)
-                if match:
-                    dsid, run = map(int, match.groups())
-                    sum_weights.setdefault(dsid, 0.0)
-                    sum_weights[dsid] += root_file[obj_name].values()[1]
-    return sum_weights
-
-
 class MatchHelper:
     @staticmethod
     def region_name(name):
@@ -222,7 +137,7 @@ class HistMaker:
         self,
         *,
         nthread=None,
-        use_mmap=False,
+        use_mmap=True,
         disable_child_thread=True,
         xsec_sumw=None,
     ):
@@ -236,6 +151,7 @@ class HistMaker:
         self.disable_pbar = False
         self.fill_file_status = None
         self.use_mmap = use_mmap
+        self.report = False
 
         # tracking weights defined in regions
         self._region_weight_tracker = {}
@@ -269,12 +185,13 @@ class HistMaker:
         self.phasespace_apply_nominal = True
         self.phsp_fallback = True
 
-        # cutbook sum weights
-        self.use_cutbook_sum_weights = False
-        self.acc_cutbook_sum_weights = False
-        self._cutbook_sum_weights_dict = None
-        self.dsid_branch = None
-        self.run_number_branch = None
+        # file to cutbook sum weights
+        self.sum_weights_file = None
+        self.sum_weights_tool = None
+
+        # PMG xsec tool
+        self.xsec_file = None
+        self.xsec_tool = lambda x: 1.0
 
         # systematics name handling
         self.enable_systematics = True
@@ -285,6 +202,7 @@ class HistMaker:
         self._selection_tracker = defaultdict(dict)
 
         # file processing variables and threads
+        self.file_nthreads = None
         self.f_decompression_executor = None
         self.f_interpretation_executor = None
         if mp.current_process().name != "MainProcess" and disable_child_thread:
@@ -340,15 +258,13 @@ class HistMaker:
         self.disable_pbar = config.disable_pbar
         self.xsec_sumw = config.xsec_sumw
         self.skip_dummy_processes = config.skip_dummy_processes
-        self.use_cutbook_sum_weights = config.use_cutbook_sum_weights
-        self.acc_cutbook_sum_weights = config.acc_cutbook_sum_weights
-        self.dsid_branch = config.dsid_branch
-        self.run_number_branch = config.run_number_branch
+        self.sum_weights_file = config.sum_weights_file
+        self.xsec_file = config.xsec_file
 
     def copy(self):
         return deepcopy(self)
 
-    def open_file(self, file_name, use_mmap=True, *args, **kwargs):
+    def open_file(self, file_name, use_mmap=False, *args, **kwargs):
         self.initialize()
         # note: executor attached to file will be shutdown automatically
         if self.f_decompression_executor is None:
@@ -368,6 +284,7 @@ class HistMaker:
         if "xrootd_handler" not in kwargs:
             opts.update({"xrootd_handler": uproot.MultithreadedXRootDSource})
         if use_mmap or self.use_mmap:
+            kwargs.setdefault("file_handler", uproot.MemmapSource)
             kwargs.update(opts)
         else:
             kwargs.setdefault("file_handler", uproot.MultithreadedFileSource)
@@ -380,7 +297,9 @@ class HistMaker:
         return uproot.open(*args, **kwargs)
 
     def skip_dummy(self, p):
-        is_dummy = getattr(p.systematic, "is_dummy", False)
+        if p.systematics is None:
+            return False
+        is_dummy = p.systematics.is_dummy
         if not is_dummy:
             return False
         if self.skip_dummy_processes and p.name in self.skip_dummy_processes:
@@ -388,35 +307,39 @@ class HistMaker:
             return True
         return False
 
+    def replace_syst_tag(self, value):
+        if self.enable_systematics and value:
+            return value.replace(self.systematics_tag, self._current_syst_tag)
+        return value
+
     def process_weights_parser(self, process):
         """Return the process-level weights as a string."""
+        if process.is_data:
+            return None
+
         process_weights = process.weights
-        if process_weights:
-            if isinstance(process_weights, list):
-                process_weights = "*".join(process_weights)
+        if not process_weights:
+            return process_weights
+
+        if isinstance(process_weights, list):
+            process_weights = "*".join(process_weights)
 
         # handle systematics naming
-        if self.enable_systematics:
-            tag_new = self._current_syst_tag
-            tag_old = self.systematics_tag
-            process_weights = process_weights.replace(tag_old, tag_new)
+        process_weights = self.replace_syst_tag(process_weights)
 
         return process_weights
 
     def region_weights_parser(self, region, process_weights=None):
+        # skip data process weights
+        if region.parent.is_data:
+            return None
+
         if region.name in self._region_weight_tracker:
             return self._region_weight_tracker[region.name]
 
-        region_weights = None
-
-        if region.weights:
-            region_weights = (
-                region.weights
-                if isinstance(region.weights, str)
-                else "*".join(region.weights)
-            )
-            if process_weights:
-                region_weights += f"*{process_weights}"
+        region_weights = region.weights
+        if isinstance(region_weights, list):
+            region_weights = "*".join(region_weights)
 
         if self.enforce_default_weight and self.default_weight:
             if region_weights is None and process_weights is None:
@@ -425,10 +348,7 @@ class HistMaker:
                 region_weights = f"*{self.default_weight}"
 
         # handle systematics naming
-        if self.enable_systematics:
-            tag_new = self._current_syst_tag
-            tag_old = self.systematics_tag
-            region_weights = region_weights.replace(tag_old, tag_new)
+        region_weights = self.replace_syst_tag(region_weights)
 
         if process_weights:
             region_weights = f"{region_weights}*{process_weights}"
@@ -461,7 +381,7 @@ class HistMaker:
         error = None
         for corr_obs in correction_variable:
             lookup = (correction_type, process, corr_obs, systematic)
-            h = self._corrections[lookup]
+            h = self.corrections[lookup]
             if h is None:
                 logger.debug(f"Cannot find {lookup} for phase space correction")
                 continue
@@ -493,18 +413,13 @@ class HistMaker:
             # check if there's specified weights in the histogram
             # overwrite the weights defined in process/region/default
             if hist.weights:
-                if self.enable_systematics:
-                    tag_new = self._current_syst_tag
-                    tag_old = self.systematics_tag
-                    weights_str = hist.weights.replace(tag_old, tag_new)
-                    obs = (x.replace(tag_old, tag_new) for x in hist.observable)
-                else:
-                    weights_str = hist.weights
-                    obs = hist.observable
+                weights_str = self.replace_syst_tag(hist.weights)
                 hist_w = ne_evaluate(weights_str, event)[mask]
             else:
                 obs = hist.observable
                 hist_w = weights[mask]
+
+            obs = (self.replace_syst_tag(x) for x in hist.observable)
 
             fdata = histogram_eval(event, mask, *obs)
             hist.from_array(*fdata, hist_w, sumW2[mask] if self.err_prop else None)
@@ -576,9 +491,9 @@ class HistMaker:
 
         syst = process.systematics
         if syst:
-            self._current_syst_tag = f"_{syst.tag}_"
+            self._current_syst_tag = f"_{syst.tag}"
         else:
-            self._current_syst_tag = "_NOSYS_"
+            self._current_syst_tag = "_NOSYS"
 
     def resolve_ttree(self, tfile, process):
         treename = process.treename
@@ -606,7 +521,7 @@ class HistMaker:
         else:
             process_lookup = (process.name, None)
 
-        proc_sel = process.selection
+        proc_sel = self.replace_syst_tag(process.selection)
 
         self._selection_tracker[process_lookup] = {"selection": proc_sel}
 
@@ -626,6 +541,8 @@ class HistMaker:
                 selection_str = selection_str.strip().strip("&")
             else:
                 selection_str = ""
+
+            selection_str = self.replace_syst_tag(selection_str)
 
             self._selection_tracker[process_lookup][region.name] = selection_str
 
@@ -651,7 +568,9 @@ class HistMaker:
 
     def select_branches(self, process):
         # Use branches from process and its regions.
-        branch_filter = process.ntuple_branches | {r.ntuple_branches for r in process}
+        branch_filter = process.ntuple_branches
+        for r in process:
+            branch_filter |= r.ntuple_branches
 
         # if branch renaming is requested, we need to make sure the original
         # names are used for branch filtering.
@@ -661,17 +580,18 @@ class HistMaker:
                 for old_b, new_b in self.branch_rename.items()
             }
 
-        if self.use_cutbook_sum_weights:
-            branch_filter |= {self.dsid_branch, self.run_number_branch} - {None, ""}
+        if self.sum_weight_tool:
+            branch_filter |= {
+                self.sum_weight_tool.dsid_branch,
+                self.sum_weight_tool.run_number_branch,
+            } - {None, ""}
 
         if self.enable_systematics:
-            tag_new = self._current_syst_tag
-            tag_old = self.systematics_tag
-            branch_filter = {x.replace(tag_old, tag_new) for x in branch_filter}
+            _update_tag = self.replace_syst_tag
+            branch_filter = {_update_tag(x) for x in branch_filter}
 
             self.branch_rename = {
-                x.replace(tag_old, tag_new): y.replace(tag_old, tag_new)
-                for x, y in self.branch_rename.items()
+                _update_tag(x): _update_tag(y) for x, y in self.branch_rename.items()
             }
 
         return branch_filter or self.reserved_branches
@@ -692,7 +612,7 @@ class HistMaker:
                     combined_process.selection = None
                 self._filling_process_from_file(combined_process, *args, **kwargs)
             process.add(combined_process)
-        return self._plevel_process(process, *args, **kwargs)
+        return self._filling_process_from_file(process, *args, **kwargs)
 
     def _filling_process_from_file(
         self,
@@ -708,8 +628,8 @@ class HistMaker:
         process_weights_parser = self.process_weights_parser
         region_weights_parser = self.region_weights_parser
 
-        # open_file = self.open_file
-        open_file = uproot.open
+        open_file = self.open_file
+        # open_file = uproot.open
 
         t_start = perf_counter()
 
@@ -729,6 +649,18 @@ class HistMaker:
             # clear existing region weights tracker
             self._region_weight_tracker = {}
 
+            # setup sum weight tool state from process
+            self.sum_weight_tool.load_state_from_process(p)
+
+            # setup PMG xsec tool
+            if p.is_data:
+                xsec_tool = self.xsec_tool  # default return 1
+            elif self.xsec_file:
+                logger.info(f"Initializing PMG xsec tool with {self.xsec_file}")
+                self.xsec_tool = PMGXsec(self.xsec_file)
+                # hard coded the dsid for now
+                xsec_tool = lambda event: self.xsec_tool(event["mcChannelNumber"])
+
             # check if external histogram looping is provided
             if histogram_method:
                 histogram_loop = histogram_method
@@ -739,14 +671,18 @@ class HistMaker:
             else:
                 histogram_loop = self._histogram_loop
 
-            logger.debug(f"retrieved {ttree.name}")
-            logger.debug(f"opened {file_name}")
-            has_corr = "with correction" if self.corrections else ""
-
+            # parsing process level weights
             p_weights = process_weights_parser(p)
 
             # check for filtered branches
             branch_filter = reserved_branches or self.select_branches(p)
+
+            logger.debug(f"Number of branches reserved: {len(branch_filter)}")
+            logger.debug(f"Branches reserved: {branch_filter}")
+
+            logger.debug(f"retrieved {ttree.name}")
+            logger.debug(f"opened {file_name}")
+            has_corr = "with correction" if self.corrections else ""
 
             with tqdm(
                 desc=f"Processing {p.name}|{p.systematics or 'nominal'} {has_corr}",
@@ -818,16 +754,10 @@ class HistMaker:
                         weights = np.ones(nevent)
                         sumW2 = np.zeros(nevent)
 
-                        if self.use_cutbook_sum_weights:
-                            evt_dsid = ne_evaluate(self.dsid_branch, event)
-                            if self.acc_cutbook_sum_weights:
-                                weights /= get_sum_weights(
-                                    evt_dsid,
-                                    sum_weights_dict=self._cutbook_sum_weights_dict,
-                                )
-                            else:
-                                evt_num = ne_evaluate(self.run_number_branch, event)
-                                weights /= get_sum_weights(evt_dsid, evt_num, file_name)
+                        # MC only weights
+                        if not p.is_data:
+                            # multiply MC xsec and divide by sum weights
+                            weights *= xsec_tool(event) / self.sum_weight_tool(event)
 
                         # combine region and process weights
                         r_weights = region_weights_parser(r, p_weights)
@@ -843,17 +773,19 @@ class HistMaker:
 
                         # Apply a phase-space correction factor to a given process
                         phsp, phsp_err = phsp_lookup(
-                            event, p.name, r.corr_type, systematic=None
+                            event, p.name, r.correction_type, systematic=None
                         )
                         if phsp is None:
                             # if the above is not found, try lookup based on treename
                             # temperoraly use for iterative corrction
                             # might need a better approach
                             phsp, phsp_err = phsp_lookup(
-                                event, p.treename, r.corr_type, systematic=None
+                                event, p.treename, r.correction_type, systematic=None
                             )
                         if phsp is None and phsp_fallback:
-                            phsp, phsp_err = phsp_lookup(event, p.name, r.corr_type)
+                            phsp, phsp_err = phsp_lookup(
+                                event, p.name, r.correction_type
+                            )
                         if phsp is not None:
                             _apply_phsp(weights, sumW2, phsp, phsp_err)
 
@@ -876,19 +808,25 @@ class HistMaker:
                         fstatus = ", ".join(
                             [
                                 f"{report.tree_entry_stop / ttree.num_entries*100.0:.2f}%",
-                                f"{ttree.num_entries} evts",
-                                f"{self.fill_file_status} files",
+                                f"{ttree.num_entries} events",
                                 f"dt={perf_counter()-t_start:.2f}s/file",
+                                self.fill_file_status or "",
                             ]
-                        )
+                        ).strip(", ")
                         logger.info(f"{p.name} processed {fstatus}")
+                        if self.report:
+                            msg = (
+                                f"{r.name}, {r.total_nevents}, {r.filled_nevents}, {r.effective_nevents}"
+                                for r in p.regions
+                            )
+                            logger.info(f"{p.name} event loop info:\n" + "\n".join(msg))
                         t_start = perf_counter()
                     else:
                         pbar_events.update(nevent)
 
         return p.copy() if copy else p
 
-    def start_filling(self, config, pFilter=None, *args, **kwargs):
+    def process(self, config, pFilter=None, *args, **kwargs):
         """
         Process instance of ConfigMgr and fill events from TTree
 
@@ -919,94 +857,35 @@ class HistMaker:
             if self.skip_dummy(p):  # skip dummy if specified in skip_dummy_processes
                 continue
 
-            if self.acc_cutbook_sum_weights:
-                self._cutbook_sum_weights_dict = sum_weights_from_files(p.filename)
+            self.sum_weight_tool = SumWeightTool(self.sum_weights_file)
 
             psets_pbar.set_description(f"On process set: {p.name}")
             file_pbar = tqdm(
-                p.filename,
+                p.input_files,
                 leave=False,
                 unit="file",
                 dynamic_ncols=True,
                 disable=self.disable_pbar,
             )
+
             file_pbar.set_description(f"processing {p.name} files")
-            for i, fname in enumerate(file_pbar):
-                self.fill_file_status = f"{i+1}/{file_pbar.total or 'NA'}"
-                if kwargs.get("copy", None):
-                    kwargs["copy"] = False
-                self.filling_process_from_file(p, fname, *args, **kwargs)
-        psets_pbar.close()
 
-
-# ==============================================================================
-def _filter_missing_ttree(process, *args, branch_rename=None, **kwargs):
-    """
-    check TTree in TFile for a single process
-    """
-    t_start = perf_counter()
-    nfiles = len(process.filename)
-    logger.info(f"filtering empty ttree for {process.name} in {nfiles} files")
-    histmaker = HistMaker(*args, **kwargs)
-    histmaker.RAISE_TREENAME_ERROR = True
-    histmaker.branch_rename = branch_rename
-    # open_root_file = histmaker.open_file
-    open_root_file = uproot.open
-    check_ttree = histmaker.resolve_ttree
-    filtered_files = []
-    append = filtered_files.append
-    for f in process.filename:
-        with open_root_file(f) as opened_f:
-            try:
-                ttree = check_ttree(opened_f, process)
-            except RuntimeError:
-                continue
-            if ttree is None or ttree.num_entries == 0:
-                continue
-        append(f)
-    p_name = (process.name, process.systematic)
-    logger.info(
-        f"{p_name} has {len(filtered_files)} good files [{perf_counter()-t_start}s]"
-    )
-    return filtered_files
-
-
-def filter_missing_ttree(config, use_mp=True):
-    """
-    check TTree in TFile for an instance of ConfigMgr
-    """
-    missing_list = []
-    flat_proc_list = (x for pset in config.process_sets for x in pset)
-    if config.good_file_list:
-        with open(config.good_file_list) as f:
-            good_file_list = json.load(f)
-        for process in flat_proc_list:
-            key = str((process.name, process.systematic))
-            if key in good_file_list:
-                process.filename = good_file_list[key]
+            if self.file_nthreads:
+                with ThreadPoolExecutor(self.file_nthreads) as executor:
+                    executor.map(
+                        self.filling_process_from_file,
+                        [p] * len(p.input_files),
+                        p.input_files,
+                        *args,
+                        **kwargs,
+                    )
             else:
-                missing_list.append(process)
-        if missing_list:
-            flat_proc_list = missing_list
-        else:
-            return
-    filter_kwargs = {"branch_rename": config.branch_rename}
-    if config.xsec_sumw:
-        filter_kwargs["xsec_sumw"] = config.xsec_sumw
-    _filter = partial(_filter_missing_ttree, **filter_kwargs)
-    if use_mp:
-        if missing_list:
-            proc_list = (x for x in missing_list)
-        else:
-            proc_list = (x for pset in config.process_sets for x in pset)
-        n_workers = int(np.ceil(0.5 * mp.cpu_count()))
-        with ProcessPoolExecutor(n_workers) as pool:
-            future_map = pool.map(_filter, flat_proc_list)
-            for filtered_files in future_map:
-                next(proc_list).filename = filtered_files
-    else:
-        for process in flat_proc_list:
-            process.filename = _filter(process)
+                for i, fname in enumerate(file_pbar):
+                    self.fill_file_status = f"{i+1}/{file_pbar.total or 'NA'}"
+                    if kwargs.get("copy", None):
+                        kwargs["copy"] = False
+                    self.filling_process_from_file(p, fname, *args, **kwargs)
+        psets_pbar.close()
 
 
 # ==============================================================================
