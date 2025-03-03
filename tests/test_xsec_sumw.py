@@ -1,4 +1,4 @@
-from collinearw import XSecSumEvtW
+from physana import XSecSumEvtW
 
 
 def test_xsec_sumw_tokens():

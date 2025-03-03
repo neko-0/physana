@@ -1,6 +1,6 @@
 import pytest
 from click.testing import CliRunner
-from collinearw import cli
+from physana import cli
 
 
 @pytest.mark.parametrize(
@@ -21,5 +21,5 @@ from collinearw import cli
 )
 def test_help(command):
     runner = CliRunner()
-    result = runner.invoke(cli.collinearw, command + ['--help'])
+    result = runner.invoke(cli.physana, command + ['--help'])
     assert result.exit_code == 0

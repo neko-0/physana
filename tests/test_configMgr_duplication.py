@@ -1,4 +1,4 @@
-from collinearw import ConfigMgr
+from physana import ConfigMgr
 
 
 def test_duplicated_config_process():

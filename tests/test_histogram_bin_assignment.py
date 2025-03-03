@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from collinearw import Histogram
+from physana import Histogram
 
 
 def test_histogram_bin_assignment_check():
