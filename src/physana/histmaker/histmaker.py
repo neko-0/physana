@@ -389,6 +389,10 @@ class HistMaker:
                 logger.debug(f"Found {lookup} for phase space correction")
                 logger.debug(f"Found correction type {type(h)}")
             if isinstance(h, (Histogram, Histogram2D)):
+                if isinstance(corr_obs, str):
+                    corr_obs = self.replace_syst_tag(corr_obs)
+                else:
+                    corr_obs = (self.replace_syst_tag(x) for x in corr_obs)
                 m_weight, m_error = weight_from_hist(event, corr_obs, h)
             elif isinstance(h, numbers.Number):
                 m_weight = h
