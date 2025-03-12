@@ -1,13 +1,11 @@
 
-# Migration still in progress. This package was used for Collinear W+jets analysis. Currently refractoring it for Run-3 and update naming scheme in new analysis release.
+# Ntuples Analysis Package. (originally the `collinearw`, package was used for Collinear W+jets analysis. Currently refractoring it for Run-3 and update naming scheme in new analysis release.)
 
-# Collinear W+jets Plotting Scripts
-
-Python scripts for generating histograms from `ROOT.TTree` and making plots
+Python scripts for generating histograms from `ROOT.TTree` ntuples and making plots
 
 ## Installation
 
-Setup python3 virtual environment via `source collinearw/envsetup.sh`.
+Setup python3 virtual environment via `source physana/envsetup.sh`.
 Then install the package:
 
 ```bash
@@ -19,10 +17,6 @@ python -m pip install -e .[unfolding]
 python -m pip install -e .[complete]
 ```
 
-The `--no-cache-dir` is needed because of `pip` interactions with SLAC's `GPFS`, and this is set via `export PIP_NO_CACHE_DIR=1`.
-
-For the next login, do `source setup_slac.sh` and you're good to go.
-
 ## Quick Start Guide
 
 ### Setting up with `ConfigMgr`
@@ -31,16 +25,16 @@ The `ConfigMgr` class is the top level container for most of the structures
 (processes/regions/histograms), and other steering parameters. For example:
 
 ```python
-from collinearw import ConfigMgr
+from physana import ConfigMgr
 
 config = ConfigMgr()
-config.set_output_location("output") # optional
 
-# to add process, regions, and histograms
-config.add_process("wjets", treename="wjets_NoSys", filename=["f1.root", "f2.root"])
-config.add_region("inclusive", selection="pt>500", weight="eventWeight")
-config.add_observable("wpt", 100, 500, 3000)
+# To add process, regions, and histograms
+config.add_process("wjets", treename="reco", input_files=["f1.root", "f2.root"])
+config.add_region("inclusive", selection="pt>500", weights="weight_mc_SYS_")
+config.add_observable("vPt", 100, 500, 3000, observable="vPt_SYS_*1e-3")
 
+# This will prepare and save an empty ConfigMgr instance.
 config.prepare()
 config.save("unfilled_config.pkl")
 ```
@@ -52,19 +46,38 @@ For more detailed example, see
 
 ### Filling Histograms
 
-The `HistMaker` class is responsible to iterating through the ROOT
-files and ttrees, and filling histograms within the instance of `ConfigMgr`
-In most of cases, the filling step can be done via the `run_HistMaker` interface:
+The `HistMaker` class is responsible for iterating through ROOT files and TTrees, 
+filling histograms within an instance of `ConfigMgr`.
+In most cases, histogram filling can be performed by interfacing with a `HistMaker` instance as shown below:
 
 ```python
-from collinearw import ConfigMgr, run_HistMaker
+from physana import ConfigMgr, histmaker_generic_interface, HistMaker
+from physana.histmaker import extract_cutbook_sum_weights
 
-# open unfilled config file
+
+# Open unfilled config file
 config = ConfigMgr.open("unfilled_config.pkl")
 
-# filling config
-config = run_HistMaker.run_HistMaker(config)
+# Create a HistMaker instance.
+# Some of the setting can be set by attributes.
+histmaker = HistMaker()
+histmaker.step_size = "32MB"
 
+# Optional:
+# Extract MC sum of weights with given input files stored in the ConfigMgr instance
+# Setting the sum weight file to config will trigger the tool in HistMaker.
+sum_weight_file = extract_cutbook_sum_weights(config, "SumWeights.txt")
+config.sum_weights_file = sum_weight_file # This is just "SumWeights.txt"
+
+# Optional:
+# Setting the PMG Xsec file will trigger xsec tool in HIstMaker.
+# It looks for "mcChannelNumber" branch for DSID.
+config.xsec_file = "/cvmfs/atlas.cern.ch/repo/sw/database/GroupData/dev/PMGTools/PMGxsecDB_mc16.txt"
+
+# Filling the config usign the interface function.
+histmaker_generic_interface(config, histmaker)
+
+# Saving
 config.save("filled_config.pkl")
 ```
 
