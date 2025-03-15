@@ -1,10 +1,11 @@
 #!/bin/bash
 
-PYTHON_VER="3.9"
+PACKAGE_NAME="physana"
+
 CURRENT_PLATFORM=$(uname -a)
 
-CURRENT_PATH=$(pwd)
 SRC_AREA=$(dirname $(realpath $BASH_SOURCE))
+CURRENT_PATH=$(pwd)
 
 echo "Source directory: ${SRC_AREA}"
 echo "Current directory: ${CURRENT_PATH}"
@@ -33,7 +34,7 @@ case $CURRENT_PLATFORM in
     lsetup "views LCG_${LCG_RELAESE} ${PLATFORM}"
     TEMP_PYTHONPATH=${CVMFS_VIEWS}/LCG_${LCG_RELAESE}/${PLATFORM}/bin/python:${CVMFS_VIEWS}/LCG_${LCG_RELAESE}/${PLATFORM}/lib
     TEMP_PYTHONPATH=${CVMFS_VIEWS}/LCG_${LCG_RELAESE}/${PLATFORM}/bin/python:${CVMFS_VIEWS}/LCG_${LCG_RELAESE}/${PLATFORM}/lib64:${TEMP_PYTHONPATH}
-    TEMP_PYTHON_INCLUDE_PATH=${CVMFS_VIEWS}/LCG_${LCG_RELAESE}/${PLATFORM}/bin/python:${CVMFS_VIEWS}/LCG_${LCG_RELAESE}/${PLATFORM}include/python${PYTHON_VER}
+    TEMP_PYTHON_INCLUDE_PATH=${CVMFS_VIEWS}/LCG_${LCG_RELAESE}/${PLATFORM}/bin/python
   ;;
 
   *)
@@ -43,6 +44,8 @@ esac
 
 OLD_PYTHONPATH=$PYTHONPATH
 PYVENV_NAME=${1:-py3}
+
+echo "Setting Python virtual environment: ${PYVENV_NAME}"
 
 if [ -f "${SRC_AREA}/../${PYVENV_NAME}/bin/activate" ]; then
     source ${SRC_AREA}/../${PYVENV_NAME}/bin/activate
@@ -68,7 +71,17 @@ else
     esac
     cd $CURRENT_PATH
 fi
-export PYTHONPATH=${SRC_AREA}/${PYVENV_NAME}/lib/python${PYTHON_VER}/site-packages:$OLD_PYTHONPATH:$TEMP_PYTHONPATH
-export ROOT_INCLUDE_PATH=${SRC_AREA}/${PYVENV_NAME}/include:$ROOT_INCLUDE_PATH
-export LD_LIBRARY_PATH=${SRC_AREA}/${PYVENV_NAME}/lib:$LD_LIBRARY_PATH:$TEMP_PYTHONPATH:/lib:/lib64
+
+export PYTHON_VER=$(python --version | cut -d ' ' -f 2 | cut -d '.' -f 1-2)
+export PYVEVN_PATH=$(dirname $SRC_AREA)/${PYVENV_NAME}
+echo "Python version: ${PYTHON_VER}"
+echo "Venv path: ${PYVEVN_PATH}"
+
+export TEMP_PYTHON_INCLUDE_PATH=$TEMP_PYTHON_INCLUDE_PATH:${CVMFS_VIEWS}/LCG_${LCG_RELAESE}/${PLATFORM}include/python${PYTHON_VER}
+
+export PYTHONPATH=${PYVEVN_PATH}/lib/python${PYTHON_VER}/site-packages:$OLD_PYTHONPATH:$TEMP_PYTHONPATH
+export ROOT_INCLUDE_PATH=${PYVEVN_PATH}/include:$ROOT_INCLUDE_PATH
+export LD_LIBRARY_PATH=${PYVEVN_PATH}/lib:$LD_LIBRARY_PATH:$TEMP_PYTHONPATH:/lib:/lib64
 export PYTHON_INCLUDE_PATH=$TEMP_PYTHON_INCLUDE_PATH
+
+echo "Done setting up Python virtual environment."
