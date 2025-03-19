@@ -13,7 +13,7 @@ except ImportError:
     FOUND_ROOT = False
 
 
-def dump_config_histograms(config: ConfigMgr, filename: str) -> None:  # noqa
+def dump_config_histograms(config: 'ConfigMgr', filename: str) -> None:  # noqa
     """
     Dump histograms from a ConfigMgr object to a ROOT file.
 
@@ -57,7 +57,7 @@ def dump_config_histograms(config: ConfigMgr, filename: str) -> None:  # noqa
                         root_histo.Write()
 
 
-def dump_histograms(histograms: List[HistogramBase], output_filename: str) -> None:
+def dump_histograms(histograms: List['HistogramBase'], output_filename: str) -> None:
     """
     Dump histograms to a ROOT file.
 
