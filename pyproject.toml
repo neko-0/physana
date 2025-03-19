@@ -58,6 +58,7 @@ physana = "physana.cli:physana"
 shellcomplete = ["click_completion"]
 develop = ["bumpversion", "black", "pyflakes"]
 test = ["pytest", "pytest-cov", "coverage", "pytest-mock"]
+cluster = ["dask", "distributed", "dask_jobqueue"]
 docs = ["sphinx", "sphinx_rtd_theme"]
 unfolding = [
   "RooUnfold @ git+https://gitlab.cern.ch/scipp/collinear-w/RooUnfold.git@bug_fixed/dimension_normalizaion",
