@@ -19,7 +19,7 @@ __getattr__, __dir__, __all__ = lazy.attach(
             'Histogram',
             'Histogram2D',
         ],
-        'serialization': ['Serialization'],
+        'serialization': ['Serialization', 'to_root'],
         'configs': ['ConfigMgr', 'XSecSumEvtW'],
         'tableMaker': ['TableMaker'],
         'plotMaker': ['PlotMaker', 'PlotJob'],
