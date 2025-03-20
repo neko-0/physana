@@ -212,6 +212,9 @@ class Histogram(HistogramBase):
         c_self.mul(rhs)
         return c_self
 
+    def __rmul__(self, lhs):
+        return self.__mul__(lhs)
+
     def __abs__(self):
         c_self = self.copy()
         np.abs(c_self._bin_content, out=c_self._bin_content)
