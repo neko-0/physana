@@ -177,6 +177,7 @@ class Histogram(HistogramBase):
     def __add__(self, rhs):
         c_self = self.copy()
         c_self.add(rhs)
+        c_self.parent = None
         return c_self
 
     def __radd__(self, rhs):
@@ -185,17 +186,20 @@ class Histogram(HistogramBase):
     def __sub__(self, rhs):
         c_self = self.copy()
         c_self.sub(rhs)
+        c_self.parent = None
         return c_self
 
     def __rsub__(self, lhs):
         c_self = self.copy()
         c_self.sub(lhs)
         c_self.mul(-1.0)
+        c_self.parent = None
         return c_self
 
     def __truediv__(self, rhs):
         c_self = self.copy()
         c_self.div(rhs)
+        c_self.parent = None
         return c_self
 
     def __rtruediv__(self, lhs):
@@ -205,11 +209,13 @@ class Histogram(HistogramBase):
         c_self._sumW2 /= 1.0 / self._bin_content**2
         c_self._bin_content = lhs / self._bin_content
         c_self._sumW2 *= c_self._bin_content**2
+        c_self.parent = None
         return c_self
 
     def __mul__(self, rhs):
         c_self = self.copy()
         c_self.mul(rhs)
+        c_self.parent = None
         return c_self
 
     def __rmul__(self, lhs):
@@ -218,6 +224,7 @@ class Histogram(HistogramBase):
     def __abs__(self):
         c_self = self.copy()
         np.abs(c_self._bin_content, out=c_self._bin_content)
+        c_self.parent = None
         return c_self
 
     def add(self, rhs):
