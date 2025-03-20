@@ -81,5 +81,3 @@ def dump_histograms(histograms: List['HistogramBase'], output_filename: str) -> 
             root_histogram = histogram.root
             root_histogram.SetName(histogram.name)
             root_histogram.Write()
-
-            HistogramBase
