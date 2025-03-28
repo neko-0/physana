@@ -11,9 +11,11 @@ from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 from uuid import uuid4
 from pathlib import Path
+from typing import Optional, Dict
 
 import numpy as np
 
+from .algorithm import BaseAlgorithm
 from .histmaker import HistMaker
 from .tree_filter import filter_missing_ttree
 from .. import strategies
@@ -26,18 +28,21 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def histmaker_generic_interface(config, histmaker=None, **process_kwargs):
+def run_algorithm(
+    config: str | ConfigMgr,
+    algorithm: Optional[BaseAlgorithm] = None,
+    **process_kwargs: Dict[str, any],
+) -> ConfigMgr:
     """
     Generic interface to fill a ConfigMgr object using a HistMaker.
 
     Parameters
     ----------
-    config : str or ConfigMgr
-        The input config to be filled.
-    histmaker : HistMaker, optional
-        The instance of HistMaker to be used. If None, a default HistMaker
-        will be created.
-    **process_kwargs : dict
+    config : str | ConfigMgr
+        The input config to be filled. Can be a string path or a ConfigMgr object.
+    algorithm : Optional[BaseAlgorithm], optional
+        The instance of BaseAlgorithm to be used. If None, a default HistMaker will be created.
+    **process_kwargs : Dict[str, any]
         Keyword arguments to be passed to histmaker.process()
 
     Returns
@@ -45,20 +50,22 @@ def histmaker_generic_interface(config, histmaker=None, **process_kwargs):
     filled_config : ConfigMgr
         The filled config object
     """
-    if histmaker is None:
-        histmaker = HistMaker()
-    elif not isinstance(histmaker, HistMaker):
-        raise RuntimeError(f"histmaker {type(histmaker)} is not instance of HistMaker")
+    if algorithm is None:
+        algorithm = HistMaker()
+    elif not isinstance(algorithm, BaseAlgorithm):
+        raise RuntimeError(
+            f"algorithm {type(algorithm)} is not an instance of BaseAlgorithm"
+        )
     config = ConfigMgr.open(config)
     if config.filled:
         logger.warning("config is already filled")
         return config
     if not config.prepared:
         config.prepare()
-    histmaker.initialize()
-    histmaker.meta_data_from_config(config)
-    histmaker.process(config, **process_kwargs)
-    histmaker.finalise()
+    algorithm.initialize()
+    algorithm.meta_data_from_config(config)
+    algorithm.process(config, **process_kwargs)
+    algorithm.finalise()
     config.filled = True
     return config
 

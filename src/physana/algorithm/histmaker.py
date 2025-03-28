@@ -11,6 +11,7 @@ from numexpr import evaluate as ne_evaluate
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from collections import defaultdict
 
+from .algorithm import BaseAlgorithm
 from .sum_weights import SumWeightTool
 from ..histo import Histogram, Histogram2D
 from ..histo.jitfunc import apply_phsp_correction, is_none_zero, parallel_nonzero_count
@@ -126,7 +127,7 @@ class MatchHelper:
         return _region_type
 
 
-class HistMaker:
+class HistMaker(BaseAlgorithm):
     """
     HistMaker class:
         handles histograms creation and preparation, with given Process and Region.
