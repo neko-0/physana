@@ -36,9 +36,7 @@ class BaseAnalysisContainer:
         try:
             return self._data[key]
         except KeyError:
-            raise KeyError(
-                f"{key} not found in {self}. Possible keys: {', '.join(self._data)}"
-            )
+            raise KeyError(f"{key} not found. Possible keys: {', '.join(self._data)}")
 
     def __setitem__(self, key, value):
         self._data[key] = value
