@@ -218,6 +218,9 @@ class Process(AnalysisContainer):
     def update(self, region):
         self._data[region.name] = region
 
+    def get(self, name):
+        return self.__getitem__(name)
+
     def remove(self, region_or_name):
         if isinstance(region_or_name, str):
             self._data.pop(region_or_name)
