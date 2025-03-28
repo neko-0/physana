@@ -5,7 +5,7 @@ __getattr__, __dir__, __all__ = lazy.attach(
     submodules=[
         'strategies',
         'histManipulate',
-        'histmaker',
+        'algorithm',
         'run_PlotMaker',
         'tools',
         'systematics',
@@ -24,6 +24,6 @@ __getattr__, __dir__, __all__ = lazy.attach(
         'tableMaker': ['TableMaker'],
         'plotMaker': ['PlotMaker', 'PlotJob'],
         'histManipulate': ['HistManipulate', 'run_ABCD_Fakes', 'run_ABCD_TF'],
-        'histmaker': ['HistMaker', 'histmaker_generic_interface'],
+        'algorithm': ['BaseAlgorithm', 'HistMaker', 'run_algorithm', 'CutFlowReader'],
     },
 )

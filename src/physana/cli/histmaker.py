@@ -4,7 +4,7 @@ import logging
 from .lazy_import import lazy_import as lazy
 
 log = logging.getLogger(__name__)
-run_HistMaker = lazy("physana.histmaker.interface")
+run_HistMaker = lazy("physana.algorithm.interface")
 configMgr = lazy("physana.configs.base")
 
 
@@ -45,7 +45,7 @@ def histmaker_fill(input, output, forcefill):
     if config.filled and not forcefill:
         log.warning(f"config {input} already filled.")
     else:
-        config = run_HistMaker.histmaker_generic_interface(config, histmaker=None)
+        config = run_HistMaker.run_algorithm(config, histmaker=None)
         config.save(output)
 
 

@@ -14,8 +14,8 @@ from .systematics import SystematicsBase
 from .configs import ConfigMgr
 from .strategies.abcd import abcd
 from .strategies.correction import Correction
-from .histmaker.interface import run_HistMaker
-from .histmaker.interface import refill_process
+from .algorithm.interface import run_HistMaker
+from .algorithm.interface import refill_process
 from .serialization import Serialization
 
 

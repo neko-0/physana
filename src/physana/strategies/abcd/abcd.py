@@ -19,9 +19,9 @@ from ...histo import Process, Region, Histogram, Histogram2D
 from ...histo.tools import Filter
 from ...systematics import SystematicsBase, Systematics
 from ...configs import ConfigMgr
-from ...histmaker import HistMaker
-from ...histmaker.histmaker import weight_from_hist
-from ...histmaker.interface import refill_process
+from ...algorithm import HistMaker
+from ...algorithm.histmaker import weight_from_hist
+from ...algorithm.interface import refill_process
 from ...serialization import Serialization
 from ...plotMaker import PlotMaker
 
