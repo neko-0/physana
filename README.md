@@ -51,8 +51,8 @@ filling histograms within an instance of `ConfigMgr`.
 In most cases, histogram filling can be performed by interfacing with a `HistMaker` instance as shown below:
 
 ```python
-from physana import ConfigMgr, histmaker_generic_interface, HistMaker
-from physana.histmaker import extract_cutbook_sum_weights
+from physana import ConfigMgr, run_algorithm, HistMaker
+from physana.algorithm import extract_cutbook_sum_weights
 
 
 # Open unfilled config file
@@ -75,7 +75,7 @@ config.sum_weights_file = sum_weight_file # This is just "SumWeights.txt"
 config.xsec_file = "/cvmfs/atlas.cern.ch/repo/sw/database/GroupData/dev/PMGTools/PMGxsecDB_mc16.txt"
 
 # Filling the config usign the interface function.
-histmaker_generic_interface(config, histmaker)
+run_algorithm(config, histmaker)
 
 # Saving
 config.save("filled_config.pkl")
