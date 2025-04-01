@@ -1,11 +1,11 @@
 import click
-import time
 import logging
 from .lazy_import import lazy_import as lazy
 
 log = logging.getLogger(__name__)
 run_HistMaker = lazy("physana.algorithm.interface")
 configMgr = lazy("physana.configs.base")
+routines_hmaker = lazy("physana.routines.run_histmaker_json")
 
 
 @click.group(name='histmaker')
@@ -14,22 +14,16 @@ def cli():
 
 
 @cli.command(name='run')
-@click.option("--config", type=str, help="path to the configuration file (.py file).")
-@click.option("--oname", type=str, help="output file name.")
-@click.option("--batch-dir", default="./", type=str)
-@click.option("--findex", multiple=True, type=str)
-@click.option("--submit-batch/--no-submit-batch", default=False)
-@click.option("--merge/--no-merge", default=False)
-def run_histmaker(config, oname, batch_dir, findex, submit_batch, merge):
+@click.option(
+    "--config", type=str, help="path to the JSON configuration for HistMaker."
+)
+def run_histmaker_json(config):
     """
-    Given a config, reduce ntuples to histograms.
+    Run HistMaker from a JSON configuration file.
     """
-    start = time.time()
-    if merge:
-        run_HistMaker.merge_output(config, oname)
-    else:
-        run_HistMaker.run_HistMaker(config, oname)
-    log.info(f"cost {time.time() - start}")
+    histmaker_json = routines_hmaker.JSONHistSetup(config)
+    histmaker_json.initialize()
+    histmaker_json.launch()
 
 
 @cli.command(name='fill')

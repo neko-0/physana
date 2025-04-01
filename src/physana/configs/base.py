@@ -59,6 +59,9 @@ class ConfigMgr:
         self.RAISE_TREENAME_ERROR = True
         self.branch_rename = None  # dict for renaming branch in the ntuple
 
+        # Cross section file
+        self.xsec_file = None
+
         # setting for sum of weight tools
         self.sum_weights_file = None
 

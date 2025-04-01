@@ -11,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
 from uuid import uuid4
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 
 import numpy as np
 
@@ -29,20 +29,20 @@ logger.setLevel(logging.INFO)
 
 
 def run_algorithm(
-    config: str | ConfigMgr,
+    input_config: str | ConfigMgr,
     algorithm: Optional[BaseAlgorithm] = None,
-    **process_kwargs: Dict[str, any],
+    **process_kwargs: Dict[str, Any],
 ) -> ConfigMgr:
     """
     Generic interface to fill a ConfigMgr object using a HistMaker.
 
     Parameters
     ----------
-    config : str | ConfigMgr
+    input_config : str | ConfigMgr
         The input config to be filled. Can be a string path or a ConfigMgr object.
     algorithm : Optional[BaseAlgorithm], optional
         The instance of BaseAlgorithm to be used. If None, a default HistMaker will be created.
-    **process_kwargs : Dict[str, any]
+    **process_kwargs : Dict[str, Any]
         Keyword arguments to be passed to histmaker.process()
 
     Returns
@@ -56,7 +56,7 @@ def run_algorithm(
         raise RuntimeError(
             f"algorithm {type(algorithm)} is not an instance of BaseAlgorithm"
         )
-    config = ConfigMgr.open(config)
+    config = ConfigMgr.open(input_config)
     if config.filled:
         logger.warning("config is already filled")
         return config
@@ -701,7 +701,7 @@ def _run_HistMaker_split_process(
 
 # ==============================================================================
 def _split_merge(jobs):
-    from configMgr import ConfigMgr
+    from ..configs.base import ConfigMgr
 
     files = jobs[0]
     out_path = jobs[1]
