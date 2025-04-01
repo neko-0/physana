@@ -100,3 +100,7 @@ force-exclude = '''
   | data
 )/
 '''
+
+[[tool.mypy.overrides]]
+module = ["untyped_package.*", "uproot", "numexpr", "lazy_loader", "_jsonnet"]
+follow_untyped_imports = true
