@@ -1,9 +1,11 @@
+from typing import Dict, Any
+
 from .base import SerializationBase
 from .histo import SerialHistogram
 
 
 class SerialProcessSet(SerializationBase):
-    def to_dict(self, pset):
+    def to_dict(self, pset: Any) -> Dict[str, Any]:
         process_s = SerialProcess().to_dict
         pset_dict = {
             "name": pset.name,
@@ -18,7 +20,7 @@ class SerialProcessSet(SerializationBase):
 
 
 class SerialProcess(SerializationBase):
-    def to_dict(self, process):
+    def to_dict(self, process: Any) -> Dict[str, Any]:
         region_s = SerialRegion().to_dict
         p_dict = {
             "name": process.name,
@@ -44,7 +46,7 @@ class SerialProcess(SerializationBase):
 
 
 class SerialRegion(SerializationBase):
-    def to_dict(self, region):
+    def to_dict(self, region: Any) -> Dict[str, Any]:
         hist_s = SerialHistogram()
         r_dict = {
             "name": region.name,
