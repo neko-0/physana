@@ -355,6 +355,8 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
                     results[name] = []
                     break
 
+    cluster.close()
+
     if not any(failed.values()):
         for name, result in results.items():
             print(f"{name} merging jobs: {len(result)}")
@@ -371,7 +373,5 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
                     except OSError:
                         os.unlink(x)
                 failed[name] = True
-
-    cluster.close()
 
     return failed
