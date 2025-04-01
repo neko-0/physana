@@ -308,7 +308,7 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
     max_jobs = json_config.others["max_num_jobs"]
     if max_jobs < 1:
         max_jobs = max(len(x) for x in prepared_jobs.values())
-    
+
     cluster.scale(jobs=max_jobs)
 
     batch_size = 3
