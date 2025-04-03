@@ -348,10 +348,10 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
                 except TimeoutError:
                     logger.warning(f"{name} timed out. Retrying...")
                     retry_count += 1
+                    results[name] = []
                     if retry_count == max_retries:
                         logger.critical(f"{name} failed after {max_retries} retries")
                         failed[name] = True
-                        results[name] = []
                         break
                 except Exception as e:
                     logger.critical(f"{name} failed with exception {e}")
