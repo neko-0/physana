@@ -4,11 +4,13 @@ import concurrent.futures
 import logging
 from glob import glob
 from pathlib import Path
+from tqdm import tqdm
 from .lazy_import import lazy_import as lazy
 
 configMgr = lazy("physana.configs.base")
 merge_tools = lazy("physana.configs.merge_tools")
 unfolding = lazy("physana.strategies.unfolding")
+tools = lazy("physana.tools")
 
 logger = logging.getLogger(__name__)
 
@@ -366,3 +368,14 @@ def slac_lsf(file, runtime, ncore, dir):
     cmd += f"-e {filename}_error.log "
     cmd += f"< {filename}"
     os.system(cmd)
+
+
+# =============================================================================
+# Check data completeness
+# =============================================================================
+@cli.command()
+@click.option("--files", type=str, help="list of files to be checked")
+def check_data(files):
+    list_of_files = glob(files)
+    logger.info("Checking data completeness for: \n" + "\n".join(list_of_files))
+    tools.check_data_completeness(tqdm(list_of_files))
