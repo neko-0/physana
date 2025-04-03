@@ -21,7 +21,8 @@ from ..configs.dispatch_tools import split
 from ..configs.merge_tools import merge
 from ..algorithm import run_algorithm, extract_cutbook_sum_weights, HistMaker
 
-logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 red = "\033[91m"
 green = "\033[92m"
@@ -78,7 +79,7 @@ class JSONHistSetup:
 
         if self._show_job_script:
             self._show_job_script = False
-            print(cluster.job_script())
+            logger.info("Job script:\n" + cluster.job_script())
 
         return cluster
 
@@ -90,16 +91,16 @@ class JSONHistSetup:
         if any(failed.values()):
             if CURRENT_ATTEMPT < MAX_ATTEMPTS:
                 CURRENT_ATTEMPT += 1
-                print(f"Attempt {CURRENT_ATTEMPT} failed. Retrying...")
+                logger.warning(f"Attempt {CURRENT_ATTEMPT} failed. Retrying...")
                 failed = job_dispatch(self)
             else:
                 for name, job_failed in failed.items():
-                    print(
+                    logger.warning(
                         f"{name} status: {f'{red} failed {reset}' if job_failed else f'{green} succeeded {reset}'}"
                     )
-                print(f"All attempts {red}failed{reset}. Exiting...")
+                logger.critical(f"All attempts {red}failed{reset}. Exiting...")
         else:
-            print(f"All attempts {green}succeeded{reset}. Exiting...")
+            logger.info(f"All attempts {green}succeeded{reset}. Exiting...")
 
 
 def fill_config(config_name: str, output_dir: str) -> Union[str, None]:
@@ -124,7 +125,7 @@ def fill_config(config_name: str, output_dir: str) -> Union[str, None]:
         try:
             os.unlink(config_name)
         except Exception as _err:
-            print(f"Unable to remove {config_name} due to {_err}")
+            logger.warning(f"Unable to remove {config_name} due to {_err}")
         return None
 
     assert len(sub_config.process_sets) == 1
@@ -270,7 +271,7 @@ def preparing_jobs(
 
         split_config = split(setting, "ifile", batch_size=1)
 
-        print(f"Starting preparing {name}")
+        logger.info(f"Starting preparing {name}")
 
         for i, sub_config in tqdm(enumerate(split_config), leave=False):
             config_name = f"{json_config.out_path}/input_{name}/{i}.pkl"
@@ -300,7 +301,7 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
     prepared_jobs = preparing_jobs(json_config)
 
     if not prepared_jobs:
-        print(f"{yellow} All jobs are merged {reset}")
+        logger.warning(f"{yellow} All jobs are merged {reset}")
         return {x: False for x in prepared_jobs.keys()}
 
     cluster = json_config.setup_cluster()
@@ -311,7 +312,7 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
         max_jobs = max(jobs_size)
     else:
         max_jobs = min(max_jobs, min(jobs_size))
-    print(f"Scaling jobs to {max_jobs}")
+    logger.info(f"Scaling jobs to {max_jobs}")
 
     cluster.scale(jobs=max_jobs)
 
@@ -340,21 +341,21 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
                     ):
                         results[name] += future.result()
                         if i >= finished_num_batch:
-                            print(f"{name} completed batch {i}/{total_batches}")
+                            logger.info(f"{name} completed batch {i}/{total_batches}")
                             finished_num_batch = i
                     failed[name] = False
                     break
                 except TimeoutError:
-                    print(f"{name} timed out. Retrying...")
+                    logger.warning(f"{name} timed out. Retrying...")
                     retry_count += 1
                     if retry_count == max_retries:
-                        print(f"{name} failed after {max_retries} retries")
+                        logger.critical(f"{name} failed after {max_retries} retries")
                         failed[name] = True
                         results[name] = []
                         break
                 except Exception as e:
-                    print(f"{name} failed with exception {e}")
-                    print(f"{name} failed after {retry_count} retries")
+                    logger.critical(f"{name} failed with exception {e}")
+                    logger.critical(f"{name} failed after {retry_count} retries")
                     failed[name] = True
                     results[name] = []
                     break
@@ -363,7 +364,7 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
 
     if not any(failed.values()):
         for name, result in results.items():
-            print(f"{name} merging jobs: {len(result)}")
+            logger.info(f"{name} merging jobs: {len(result)}")
             try:
                 config = merge((ConfigMgr.open(x) for x in results[name]))
                 config.save(f"{json_config.out_path}/{name}.pkl")
