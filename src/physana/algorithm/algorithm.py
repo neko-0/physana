@@ -15,6 +15,10 @@ class BaseAlgorithm(ABC):
         pass
 
     @abstractmethod
+    def prepare(self, config: ConfigMgr) -> None:
+        pass
+
+    @abstractmethod
     def meta_data_from_config(self, config: ConfigMgr) -> None:
         pass
 

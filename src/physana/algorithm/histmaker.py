@@ -239,6 +239,10 @@ class HistMaker(BaseAlgorithm):
             self.f_interpretation_executor = None
         self._is_close = True
 
+    def prepare(self, config):
+        # config will check if prepared
+        config.prepare()
+
     def meta_data_from_config(self, config):
         """
         load meta data from configMgr object

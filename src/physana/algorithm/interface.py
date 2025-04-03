@@ -60,9 +60,8 @@ def run_algorithm(
     if config.filled:
         logger.warning("config is already filled")
         return config
-    if not config.prepared:
-        config.prepare()
     algorithm.initialize()
+    algorithm.prepare(config)
     algorithm.meta_data_from_config(config)
     algorithm.process(config, **process_kwargs)
     algorithm.finalise()
