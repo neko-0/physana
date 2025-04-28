@@ -1,6 +1,6 @@
 from sys import getsizeof
 from copy import copy, deepcopy
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, List
 
 from .tools import get_all_slots, to_numexpr
 
