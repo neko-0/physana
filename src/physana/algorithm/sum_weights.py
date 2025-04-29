@@ -33,6 +33,7 @@ class SumWeightTool:
         if process.is_data:
             self.is_data = True
             return
+        self.is_data = False
         if process.systematics:
             self.syst = process.systematics.tag
         else:
@@ -97,6 +98,11 @@ class SumWeightTool:
                 (idx, idx_run), (len(unique_pairs[0]), len(unique_pairs[1]))
             ),
         )
+
+    def get_sum_weight(self, dsid, run_number):
+        if self.is_data or not self.is_loaded:
+            return 1.0
+        return self.sum_weights_dict[self.syst][(dsid, run_number)]
 
 
 def extract_cutbook_sum_weights(
