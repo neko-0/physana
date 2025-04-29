@@ -4,6 +4,7 @@ import numpy as np
 from typing import Optional, List, Dict, Any, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
+    import uproot
     import ROOT
 
 from . import jitfunc
@@ -543,3 +544,14 @@ class Histogram(HistogramBase):
     def root(self, roothist: "ROOT.TH1") -> None:
         """Sets this histogram from a ROOT TH1"""
         from_th1(self, roothist)
+
+
+def from_uproot_histo(ihisto: "uproot.models.TH.Model_TH1") -> "Histogram":
+    name = ihisto.name
+    content, bins = ihisto.to_numpy()
+    title = ihisto.title
+    ohisto = Histogram.variable_bin(name, bins, title)
+    # it seems uproot doesn't include underflow/overflow
+    ohisto.bin_content[1:-1] = content
+    ohisto.sumW2[1:-1] = ihisto.variances()
+    return ohisto
