@@ -732,7 +732,7 @@ class ConfigMgr:
             m_config.update_children_parent()
             return m_config
         except Exception as _error:
-            raise IOError(f"cannot open file: {filename} using {backend}") from _error
+            raise IOError(f"cannot open file: {filename}({type(filename)}) using {backend}") from _error
         finally:
             t_diff = perf_counter() - _t_start
             logger.info(f"open({filename}) takes {t_diff:.2f}s wall time.")
