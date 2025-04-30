@@ -31,6 +31,7 @@ logger.setLevel(logging.INFO)
 def run_algorithm(
     input_config: str | ConfigMgr,
     algorithm: Optional[BaseAlgorithm] = None,
+    forcefill: bool = False,
     **process_kwargs: Dict[str, Any],
 ) -> ConfigMgr:
     """
