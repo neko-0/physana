@@ -4,7 +4,6 @@ from .lazy_import import lazy_import as lazy
 
 log = logging.getLogger(__name__)
 run_HistMaker = lazy("physana.algorithm.interface")
-configMgr = lazy("physana.configs.base")
 routines_hmaker = lazy("physana.routines.run_histmaker_json")
 
 
@@ -27,20 +26,15 @@ def run_histmaker_json(config):
 
 
 @cli.command(name='fill')
-@click.option("--input", type=str, help="input config name.")
+@click.option("--file", type=str, help="input config name.")
 @click.option("--output", type=str, help="output config name.")
 @click.option("--forcefill/--no-forcefill", default=False)
-def histmaker_fill(input, output, forcefill):
+def histmaker_fill(file, output, forcefill):
     """
     Command line interface to fill a ConfigMgr object.
     Currently only the default HistMaker can be used.
     """
-    config = configMgr.ConfigMgr.open(input)
-    if config.filled and not forcefill:
-        log.warning(f"config {input} already filled.")
-    else:
-        config = run_HistMaker.run_algorithm(config, histmaker=None)
-        config.save(output)
+    run_HistMaker.run_algorithm(file, algorithm=None, forcefill=forcefill).save(output)
 
 
 @cli.command(name='run-syst')
