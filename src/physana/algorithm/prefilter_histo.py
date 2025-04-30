@@ -57,6 +57,8 @@ class PrefilterHistReader(HistMaker):
                 if i % 20 == 0:
                     logger.info(f"Processed {i}/{nfiles} files.")
 
+            logger.info(f"Processed {nfiles}/{nfiles} files.")
+
     def parse_prefilter_histogram(
         self, fname: str, is_data=False
     ) -> Dict[str, List[Tuple[str, str, "Histogram"]]]:
