@@ -11,7 +11,7 @@ from collections import defaultdict
 
 from tqdm import tqdm
 from dask_jobqueue import HTCondorCluster
-from dask.distributed import Client, Future
+from dask.distributed import Client, Future, LocalCluster
 from dask.distributed import as_completed as dask_as_completed
 
 from .dataset_group import get_ntuple_files
@@ -304,8 +304,6 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
         logger.warning(f"{yellow} All jobs are merged {reset}")
         return {x: False for x in prepared_jobs.keys()}
 
-    cluster = json_config.setup_cluster()
-
     max_jobs = json_config.others["max_num_jobs"]
     jobs_size = [len(x) for x in prepared_jobs.values()]
     if max_jobs < 1:
@@ -314,7 +312,12 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
         max_jobs = min(max_jobs, min(jobs_size))
     logger.info(f"Scaling jobs to {max_jobs}")
 
-    cluster.scale(jobs=max_jobs)
+    if json_config.others["local"]:
+        cluster = LocalCluster()
+        cluster.scale(max_jobs)
+    else:
+        cluster = json_config.setup_cluster()
+        cluster.scale(jobs=max_jobs)
 
     batch_size = 3
     failed = {x: False for x in prepared_jobs}
