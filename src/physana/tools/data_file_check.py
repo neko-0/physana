@@ -81,13 +81,19 @@ def check_data_completeness(list_of_files: List[str]) -> None:
         nevents[fmd.campaign] += fmd.nevents
 
     for year, (expected_files, expected_events) in DATA_YEAR.items():
-        if nfiles[year] != expected_files:
-            logger.warning(
-                f"Incomplete files for {year}: {nfiles[year]} != {expected_files} ({nfiles[year]-expected_files})"
-            )
-        elif nevents[year] != expected_events:
-            logger.warning(
-                f"Incomplete events for {year}: {nevents[year]} != {expected_events} ({nevents[year]-expected_events})"
-            )
+        nfile_fail = nfiles[year] != expected_files
+        nevent_fail = nevents[year] != expected_events
+        if nfile_fail or nevent_fail:
+            file_percent = (nfiles[year] - expected_files) / expected_files * 100
+            event_percent = (nevents[year] - expected_events) / expected_events * 100
+            logger.warning(f"Year {year}")
+            if nfile_fail:
+                logger.warning(
+                    f"\t files found {nfiles[year]}, expected {expected_files} ({file_percent:.2f}%)"
+                )
+            if nevent_fail:
+                logger.warning(
+                    f"\t nevents found {nevents[year]}, expected {expected_events} ({event_percent:.2f}%)"
+                )
         else:
             logger.info(f"Complete data for {year}")
