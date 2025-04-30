@@ -378,4 +378,4 @@ def slac_lsf(file, runtime, ncore, dir):
 def check_data(files):
     list_of_files = glob(files)
     logger.info("Checking data completeness for: \n" + "\n".join(list_of_files))
-    tools.check_data_completeness(tqdm(list_of_files))
+    tools.check_data_completeness(tqdm(list_of_files, leave=False))
