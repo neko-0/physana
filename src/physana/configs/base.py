@@ -469,7 +469,7 @@ class ConfigMgr:
         self,
         name,
         selection,
-        weight=None,
+        weights=None,
         study_type="plot",
         corr_type='None',
         *,
@@ -480,7 +480,7 @@ class ConfigMgr:
         if self.has_region(name):
             logger.warning(f"Region {name} already exists.")
             return
-        r = Region(name, weight, selection, study_type, corr_type, **kwargs)
+        r = Region(name, weights, selection, study_type, corr_type, **kwargs)
         self.append_region(r, reserve_branches, aux=aux)
 
     def add_histogram1D(
