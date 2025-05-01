@@ -207,13 +207,14 @@ def generate_config(
         process.setdefault("input_files", process_file_map[name])
         process.setdefault("selection", process_selection)
         process.setdefault("treename", "reco")
+        process.setdefault("weights", lumi)
         setting.add_process(**process)
 
     # Define regions
     # ===================================================================
     for region in json_config.region_list:
         region = region.copy()  # make a copy to avoid modifying the original
-        region.setdefault("weight", weights)
+        region.setdefault("weights", weights)
         selection_name = region["selection"]
         selection_list = [json_config.define_selections[x] for x in selection_name]
         region["selection"] = "&&".join(selection_list)
