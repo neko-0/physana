@@ -58,7 +58,7 @@ def run_algorithm(
             f"algorithm {type(algorithm)} is not an instance of BaseAlgorithm"
         )
     config = ConfigMgr.open(input_config)
-    if config.filled:
+    if not forcefill and config.filled:
         logger.warning("config is already filled")
         return config
     algorithm.initialize()
