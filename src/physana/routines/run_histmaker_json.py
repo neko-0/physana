@@ -19,7 +19,8 @@ from .dataset_group import get_ntuple_files
 from ..configs.base import ConfigMgr
 from ..configs.dispatch_tools import split
 from ..configs.merge_tools import merge
-from ..algorithm import run_algorithm, extract_cutbook_sum_weights, HistMaker
+from ..algorithm import run_algorithm, HistMaker
+from ..tools import extract_cutbook_sum_weights
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

@@ -12,10 +12,10 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from collections import defaultdict
 
 from .algorithm import BaseAlgorithm
-from .sum_weights import SumWeightTool
 from ..histo import Histogram, Histogram2D
 from ..histo.jitfunc import apply_phsp_correction, is_none_zero, parallel_nonzero_count
 from ..tools.xsec import PMGXsec
+from ..tools.sum_weights import SumWeightTool
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)

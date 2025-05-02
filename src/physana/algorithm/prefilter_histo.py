@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple, TYPE_CHECKING
 import logging
 
 from .histmaker import HistMaker
-from .sum_weights import SumWeightTool
+from ..tools.sum_weights import SumWeightTool
 from ..tools.xsec import PMGXsec
 from ..histo.histo1d import from_uproot_histo
 from ..histo.region import Region
