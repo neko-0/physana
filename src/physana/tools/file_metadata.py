@@ -58,6 +58,8 @@ class FileMetaData:
             self._load_metadata(ifile)
 
     def _load_metadata(self, tfile: uproot.ReadOnlyDirectory) -> None:
+        if 'metadata' not in tfile:
+            raise ValueError("File does not contain metadata")
         labels = tfile['metadata'].axis().labels()
         self.data_type = labels[0]
         self.campaign = labels[1]
