@@ -38,6 +38,7 @@ class ConfigMgr:
         description="",
     ):
         self.name = name
+        self.filename = None
         self.ntuple_src_path = ntuple_src_path
         self.output_path = output_path
         self.descriptions = description
@@ -143,6 +144,9 @@ class ConfigMgr:
         for key in deepcopy_keys:
             copy_self.__dict__[key] = deepcopy(self.__dict__[key], memo)
         return copy_self
+    
+    def __str__(self):
+        return f"{self.name}:{self.filename}"
 
     @property
     def region_list(self):
@@ -730,6 +734,7 @@ class ConfigMgr:
             elif backend == "shelve":
                 m_config = ConfigMgr.merge(m_serial.from_shelve(filename))
             m_config.update_children_parent()
+            m_config.filename = filename
             return m_config
         except Exception as _error:
             raise IOError(f"cannot open file: {filename}({type(filename)}) using {backend}") from _error
