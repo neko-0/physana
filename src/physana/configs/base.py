@@ -725,7 +725,7 @@ class ConfigMgr:
     def open(filename, backend="pickle"):
         logger.info(f"trying to open({filename})")
         _t_start = perf_counter()
-        if isinstance(filename, ConfigMgr):
+        if not isinstance(filename, (str, Path)):
             return filename
         m_serial = Serialization("config")
         try:
