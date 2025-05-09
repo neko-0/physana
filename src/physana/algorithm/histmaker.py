@@ -10,6 +10,7 @@ from fnmatch import fnmatch
 from numexpr import evaluate as ne_evaluate
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from collections import defaultdict
+from typing import Optional, Callable, List, Dict, Any
 
 from .algorithm import BaseAlgorithm
 from ..histo import Histogram, Histogram2D
@@ -137,75 +138,77 @@ class HistMaker(BaseAlgorithm):
     def __init__(
         self,
         *,
-        nthread=None,
-        use_mmap=True,
-        disable_child_thread=True,
-        xsec_sumw=None,
+        nthread: Optional[int] = None,
+        use_mmap: bool = True,
+        disable_child_thread: bool = True,
+        xsec_sumw: Optional[PMGXsec] = None,
     ):
         # processing status variables
-        self._entry_start = 0
-        self._entry_stop = -1
-        self._tree_ibatch = 0
-        self._is_init = False
-        self._is_close = False
-        self.step_size = "50MB"
-        self.disable_pbar = False
-        self.fill_file_status = None
-        self.use_mmap = use_mmap
-        self.report = False
+        self._entry_start: Optional[int] = None
+        self._entry_stop: Optional[int] = None
+        self._tree_ibatch: int = 0
+        self._is_init: bool = False
+        self._is_close: bool = False
+        self.step_size: str = "50MB"
+        self.disable_pbar: bool = False
+        self.fill_file_status: Optional[Dict[str, Any]] = None
+        self.use_mmap: bool = use_mmap
+        self.report: bool = False
 
         # tracking weights defined in regions
-        self._region_weight_tracker = {}
+        self._region_weight_tracker: Dict[str, Dict[str, Any]] = {}
 
         # default weight defined at the HistMaker
-        self.default_weight = None
-        self.enforce_default_weight = False
+        self.default_weight: Optional[float] = None
+        self.enforce_default_weight: bool = False
 
         # old flag for ttree lookup error handling
-        self.RAISE_TREENAME_ERROR = True
+        self.RAISE_TREENAME_ERROR: bool = True
 
         # flag for sumW2 error propagation
-        self.err_prop = True
+        self.err_prop: bool = True
 
         # branches reserved globally
-        self.reserved_branches = None
+        self.reserved_branches: Optional[List[str]] = None
 
         # for branch name renaming in the ttree
-        self.branch_rename = None
+        self.branch_rename: Optional[Dict[str, str]] = None
 
-        self.xsec_sumw = xsec_sumw  # cross section and sum of event weights
-        self.skip_dummy_processes = None
+        self.xsec_sumw: Optional[PMGXsec] = (
+            xsec_sumw  # cross section and sum of event weights
+        )
+        self.skip_dummy_processes: Optional[List[str]] = None
 
         # variables for multi-thread/process histogram filling.
-        self.hist_fill_type = None
-        self.hist_fill_executor = None
+        self.hist_fill_type: Optional[str] = None
+        self.hist_fill_executor: Optional[ThreadPoolExecutor] = None
 
         # phase space correction
-        self.corrections = None
-        self.phasespace_corr_obs = ["nJet30"]
-        self.phasespace_apply_nominal = True
-        self.phsp_fallback = True
+        self.corrections: Optional[Dict[str, Any]] = None
+        self.phasespace_corr_obs: List[str] = ["nJet30"]
+        self.phasespace_apply_nominal: bool = True
+        self.phsp_fallback: bool = True
 
         # file to cutbook sum weights
-        self.sum_weights_file = None
-        self.sum_weights_tool = None
+        self.sum_weights_file: Optional[str] = None
+        self.sum_weights_tool: Optional[SumWeightTool] = None
 
         # PMG xsec tool
-        self.xsec_file = None
-        self.xsec_tool = lambda x: 1.0
+        self.xsec_file: Optional[str] = None
+        self.xsec_tool: Callable[[str], float] = lambda x: 1.0
 
         # systematics name handling
-        self.enable_systematics = True
-        self.systematics_tag = "_SYS_"
-        self._current_syst_tag = None
+        self.enable_systematics: bool = True
+        self.systematics_tag: str = "_SYS_"
+        self._current_syst_tag: Optional[str] = None
 
         # selection tracking variables
-        self._selection_tracker = defaultdict(dict)
+        self._selection_tracker: Dict[str, Dict[str, Any]] = defaultdict(dict)
 
         # file processing variables and threads
-        self.file_nthreads = None
-        self.f_decompression_executor = None
-        self.f_interpretation_executor = None
+        self.file_nthreads: Optional[int] = None
+        self.f_decompression_executor: Optional[ThreadPoolExecutor] = None
+        self.f_interpretation_executor: Optional[ThreadPoolExecutor] = None
         if mp.current_process().name != "MainProcess" and disable_child_thread:
             self.nthread = 1
         else:
@@ -300,6 +303,10 @@ class HistMaker(BaseAlgorithm):
 
     def raw_open(self, *args, **kwargs):
         return uproot.open(*args, **kwargs)
+
+    def set_entry_range(self, entry_start, entry_end):
+        self._entry_start = entry_start
+        self._entry_end = entry_end
 
     def skip_dummy(self, p):
         if p.systematics is None:
@@ -646,7 +653,8 @@ class HistMaker(BaseAlgorithm):
             ttree = self.resolve_ttree(tfile, p)
 
             # check ttree and number of entry. return early if it's zero
-            if ttree is None or ttree.num_entries == 0:
+            total_entries = ttree.num_entries
+            if ttree is None or total_entries == 0:
                 return p.copy() if copy else p
 
             # setting the current systematics tag
@@ -695,7 +703,7 @@ class HistMaker(BaseAlgorithm):
 
             with tqdm(
                 desc=f"Processing {p.name}|{p.systematics or 'nominal'} {has_corr}",
-                total=ttree.num_entries,
+                total=total_entries,
                 leave=False,
                 unit="events",
                 dynamic_ncols=True,
@@ -705,10 +713,10 @@ class HistMaker(BaseAlgorithm):
                     step_size=self.step_size,
                     filter_name=branch_filter,
                     report=True,
+                    entry_start=self._entry_start,
+                    entry_stop=self._entry_stop,
                     library="np",
                 ):
-                    self._entry_start = report.tree_entry_start
-                    self._entry_stop = report.tree_entry_stop
                     self._tree_ibatch += 1
                     nevent = report.tree_entry_stop - report.tree_entry_start
                     pbar_events.set_description(f"Processing {nevent} events")
@@ -816,8 +824,8 @@ class HistMaker(BaseAlgorithm):
                     if self.disable_pbar:
                         fstatus = ", ".join(
                             [
-                                f"{report.tree_entry_stop / ttree.num_entries*100.0:.2f}%",
-                                f"{ttree.num_entries} events",
+                                f"{report.tree_entry_stop / total_entries*100.0:.2f}%",
+                                f"{total_entries} events",
                                 f"dt={perf_counter()-t_start:.2f}s/file",
                                 self.fill_file_status or "",
                             ]
