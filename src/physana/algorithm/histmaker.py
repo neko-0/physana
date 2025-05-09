@@ -653,9 +653,10 @@ class HistMaker(BaseAlgorithm):
             ttree = self.resolve_ttree(tfile, p)
 
             # check ttree and number of entry. return early if it's zero
-            total_entries = ttree.num_entries
-            if ttree is None or total_entries == 0:
+            if ttree is None or ttree.num_entries == 0:
                 return p.copy() if copy else p
+
+            total_entries = ttree.num_entries
 
             # setting the current systematics tag
             self.set_systematics_tag(p)
