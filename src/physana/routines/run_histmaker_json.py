@@ -6,7 +6,7 @@ import pathlib
 import logging
 import socket
 from functools import partial
-from typing import Union, Dict, List, Any, Callable
+from typing import Union, Dict, List, Any, Callable, Optional, Tuple
 from collections import defaultdict
 
 from tqdm import tqdm
@@ -104,7 +104,9 @@ class JSONHistSetup:
             logger.info(f"All attempts {green}succeeded{reset}. Exiting...")
 
 
-def fill_config(config_name: str, output_dir: str) -> Union[str, None]:
+def fill_config(
+    config_name: str, output_dir: str, entry_range: Optional[Tuple[int, int]] = None
+) -> Union[str, None]:
     """
     Opens a configuration file, processes it using HistMaker, and saves the result.
 
@@ -139,7 +141,18 @@ def fill_config(config_name: str, output_dir: str) -> Union[str, None]:
             else:
                 ifile = None
 
-    output = f"{output_dir}/input_{pset.name}_{ifile}.pkl"
+    if entry_range:
+        start, end = entry_range
+    else:
+        start, end = None, None
+
+    # Setting up output file name.
+    output = f"{output_dir}/input_{pset.name}_{ifile}"
+    if start is None and end is None:
+        output += ".pkl"
+    else:
+        output += f"_{start}_{end}.pkl"
+
     if pathlib.Path(output).exists():
         return output
 
@@ -147,6 +160,7 @@ def fill_config(config_name: str, output_dir: str) -> Union[str, None]:
     histmaker.step_size = "32MB"
     histmaker.nthread = 1
     histmaker.disable_pbar = True
+    histmaker.set_entry_range(start, end)
     sub_config.disable_pbar = True
     run_algorithm(sub_config, histmaker)
 
@@ -253,7 +267,7 @@ def preparing_jobs(
         A dictionary of prepared jobs.
     """
     jobs = json_config.jobs
-    # Check merged output
+    # Check if there is already a merged output
     for output_name in list(jobs):
         output_filename = pathlib.Path(f"{json_config.out_path}/{output_name}.pkl")
         if output_filename.exists():
@@ -271,16 +285,21 @@ def preparing_jobs(
                 setting, sum_weight_file
             )
 
-        split_config = split(setting, "ifile", batch_size=1)
+        split_config = split(setting, "entries", tree_name="reco")
 
         logger.info(f"Starting preparing {name}")
 
-        for i, sub_config in tqdm(enumerate(split_config), leave=False):
-            config_name = f"{json_config.out_path}/input_{name}/{i}.pkl"
+        for i, (sub_config, start, end) in tqdm(enumerate(split_config), leave=False):
+            config_name = f"{json_config.out_path}/input_{name}/{i}_{start}_{end}.pkl"
             if not pathlib.Path(config_name).exists():
                 config_name = sub_config.save(config_name)
             prepared_jobs[name].append(
-                partial(fill_config, config_name, f"{json_config.out_path}/tmp_{name}/")
+                partial(
+                    fill_config,
+                    config_name,
+                    f"{json_config.out_path}/tmp_{name}/",
+                    (start, end),
+                )
             )
 
     return prepared_jobs
@@ -315,13 +334,13 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
     logger.info(f"Scaling jobs to {max_jobs}")
 
     if json_config.others["local"]:
-        cluster = LocalCluster()
-        cluster.scale(max_jobs)
+        cluster = LocalCluster(n_workers=max_jobs)
     else:
         cluster = json_config.setup_cluster()
         cluster.scale(jobs=max_jobs)
 
-    batch_size = 3
+    batch_size = json_config.others.get("file_batch_size", 3)
+    timeout = json_config.others.get("timeout", 60 * 5)
     failed = {x: False for x in prepared_jobs}
     futures: Dict[str, List[Future]] = defaultdict(list)
     results: Dict[str, List[Any]] = defaultdict(list)
@@ -342,7 +361,7 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
             while retry_count < max_retries:
                 try:
                     for i, future in enumerate(
-                        dask_as_completed(futures_list, timeout=60 * 5), start=1
+                        dask_as_completed(futures_list, timeout=timeout), start=1
                     ):
                         results[name] += future.result()
                         if i >= finished_num_batch:
