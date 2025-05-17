@@ -144,7 +144,7 @@ class ConfigMgr:
         for key in deepcopy_keys:
             copy_self.__dict__[key] = deepcopy(self.__dict__[key], memo)
         return copy_self
-    
+
     def __str__(self):
         return f"{self.name}:{self.filename}"
 
@@ -331,9 +331,13 @@ class ConfigMgr:
                 if r.branch_reserved:
                     continue
                 if r.weights:
-                    weight[r.name] = executor.submit(get_expression_variables, r.weights)
+                    weight[r.name] = executor.submit(
+                        get_expression_variables, r.weights
+                    )
                 if r.selection:
-                    selection[r.name] = executor.submit(get_expression_variables, r.selection)
+                    selection[r.name] = executor.submit(
+                        get_expression_variables, r.selection
+                    )
             # branches = weight + selection
             # num_regions = len(branches)
             num_regions = len(weight) + len(selection)
@@ -735,7 +739,9 @@ class ConfigMgr:
             m_config.filename = filename
             return m_config
         except Exception as _error:
-            raise IOError(f"cannot open file: {filename}({type(filename)}) using {backend}") from _error
+            raise IOError(
+                f"cannot open file: {filename}({type(filename)}) using {backend}"
+            ) from _error
         finally:
             t_diff = perf_counter() - _t_start
             logger.info(f"open({filename}) takes {t_diff:.2f}s wall time.")

@@ -111,12 +111,15 @@ def split_by_input_files(iconfig, shallow=False, batch_size=20, **_):
                         cc_sub_config.append_process(c_p, copy=False)
                         yield cc_sub_config
                 elif sub_config.input_files:
-                    for ifile in file_batch_generator(sub_config.input_files, batch_size):
+                    for ifile in file_batch_generator(
+                        sub_config.input_files, batch_size
+                    ):
                         c_sub_config = sub_config.copy(shallow=shallow)
                         c_sub_config.input_files = {ifile}
                         yield c_sub_config
                 else:
                     yield sub_config
+
 
 def split_by_entries(iconfig, nbatch=5, tree_name="reco", **_):
     for config in split_by_input_files(iconfig, batch_size=1):
@@ -127,16 +130,16 @@ def split_by_entries(iconfig, nbatch=5, tree_name="reco", **_):
 
                 if not p.input_files:
                     yield config, None, None
-                    continue 
-                    
+                    continue
+
                 # Count total entries from ttree
-                assert len(p.input_files) == 1            
+                assert len(p.input_files) == 1
                 ifile = list(p.input_files)[0]
                 with uproot.open(ifile) as f:
                     if tree_name not in f:
                         yield config, None, None
                         continue
-                    
+
                     total_entries = f[tree_name].num_entries
                     if total_entries == 0:
                         yield config, None, None
@@ -151,7 +154,7 @@ def split_by_entries(iconfig, nbatch=5, tree_name="reco", **_):
                     c_p.input_files = {ifile}
                     c_config.append_process(c_p, copy=False)
                     yield c_config, batch_start, batch_start + batch_size
-                    
+
 
 def split_by_regions(configMgr, region_split_size=5, copy=True):
     """
