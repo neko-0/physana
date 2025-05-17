@@ -16,7 +16,7 @@ import numpy as np
 from tqdm import tqdm
 
 from ..histo import ProcessSet, Region, Histogram, Histogram2D
-from ..histo.tools import from_root, from_numexpr, _expr_var
+from ..histo.tools import from_root, from_numexpr, get_expression_variables
 from ..systematics import Systematics
 from ..serialization import Serialization
 from ..serialization.base import async_from_pickles
@@ -301,7 +301,7 @@ class ConfigMgr:
         if isinstance(expr, list):
             parsed = set(expr)
         elif expr:
-            parsed = _expr_var(expr)
+            parsed = get_expression_variables(expr)
         else:
             parsed = None
         if parsed:
@@ -331,11 +331,9 @@ class ConfigMgr:
                 if r.branch_reserved:
                     continue
                 if r.weights:
-                    # weight.append(executor.submit(_expr_var, r.weights))
-                    weight[r.name] = executor.submit(_expr_var, r.weights)
+                    weight[r.name] = executor.submit(get_expression_variables, r.weights)
                 if r.selection:
-                    # selection.append(executor.submit(_expr_var, r.selection))
-                    selection[r.name] = executor.submit(_expr_var, r.selection)
+                    selection[r.name] = executor.submit(get_expression_variables, r.selection)
             # branches = weight + selection
             # num_regions = len(branches)
             num_regions = len(weight) + len(selection)
