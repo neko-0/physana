@@ -4,6 +4,7 @@ for parallelization processing.
 """
 
 import logging
+import uproot
 from math import ceil
 from copy import deepcopy
 
@@ -117,6 +118,40 @@ def split_by_input_files(iconfig, shallow=False, batch_size=20, **_):
                 else:
                     yield sub_config
 
+def split_by_entries(iconfig, nbatch=5, tree_name="reco", **_):
+    for config in split_by_input_files(iconfig, batch_size=1):
+        assert len(config.process_sets) == 1
+        for pset in config.process_sets:
+            assert pset.num_processes() == 1
+            for p in pset:
+
+                if not p.input_files:
+                    yield config, None, None
+                    continue 
+                    
+                # Count total entries from ttree
+                assert len(p.input_files) == 1            
+                ifile = list(p.input_files)[0]
+                with uproot.open(ifile) as f:
+                    if tree_name not in f:
+                        yield config, None, None
+                        continue
+                    
+                    total_entries = f[tree_name].num_entries
+                    if total_entries == 0:
+                        yield config, None, None
+                        continue
+
+                # Divide entries into batches
+                batch_size = int(total_entries / nbatch)
+                for batch_start in range(0, total_entries, batch_size):
+                    c_config = config.copy(shallow=True)
+                    c_config.process_sets = []
+                    c_p = p.copy(shallow=True)
+                    c_p.input_files = {ifile}
+                    c_config.append_process(c_p, copy=False)
+                    yield c_config, batch_start, batch_start + batch_size
+                    
 
 def split_by_regions(configMgr, region_split_size=5, copy=True):
     """
@@ -318,6 +353,8 @@ def split(configMgr, split_type="process", *args, **kwargs):
         split_method = split_by_systematic_and_process
     elif split_type == "systematic-process-files":
         split_method = split_by_systematic_process_files
+    elif split_type == "entries":
+        split_method = split_by_entries
     else:
         logger.warning(f"Unknown {split_type=}. using 'process' split type")
         logger.warning("Fallback to default split type")
