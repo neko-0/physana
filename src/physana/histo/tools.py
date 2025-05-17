@@ -2,13 +2,14 @@ import sys
 import re
 import fnmatch
 from functools import lru_cache
-
+from typing import Any, Set, Callable
 import formulate
+from formulate.AST import Symbol
 
 _all_slots_cache = {}
 
 
-def get_all_slots(obj):
+def get_all_slots(obj: Any) -> Set[str]:
     obj_class = type(obj)
     if obj_class not in _all_slots_cache:
         slots = set()
@@ -21,59 +22,69 @@ def get_all_slots(obj):
 
 
 class RecursionLimit:
-    __slot__ = ("old_limit", "limit")
+    __slots__ = ("old_limit", "limit")
 
-    def __init__(self, limit):
-        self.old_limit = sys.getrecursionlimit()
-        self.limit = limit
+    def __init__(self, limit: int) -> None:
+        self.old_limit: int = sys.getrecursionlimit()
+        self.limit: int = limit
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         sys.setrecursionlimit(self.limit)
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         sys.setrecursionlimit(self.old_limit)
 
 
 @lru_cache(maxsize=None)
-def from_root(expr, *, rlimit=1500):
+def from_root(expr: str, *, rlimit: int = 1500) -> formulate.AST:
     try:
-        with RecursionLimit(rlimit):  # pyparsing can reach the limit for long expr
+        with RecursionLimit(rlimit):  # For long expression
             return formulate.from_root(expr)
-    except formulate.parser.ParsingException as _error:
-        raise Exception(f"unable to parse {expr} due to pyparsing") from _error
     except Exception as _error:
         raise Exception(f"unable to parse {expr}") from _error
 
 
 @lru_cache(maxsize=None)
-def from_numexpr(expr):
+def from_numexpr(expr: str) -> formulate.AST:
     try:
         return formulate.from_numexpr(expr)
-    except formulate.parser.ParsingException as _error:
-        raise Exception(f"unable to parse {expr} due to pyparsing") from _error
     except Exception as _error:
         raise Exception(f"unable to parse {expr}") from _error
 
 
 @lru_cache(maxsize=None)
-def to_numexpr(expr):
+def to_numexpr(expr: str) -> str:
     if expr:
         return from_root(expr).to_numexpr()
     return expr
 
 
+def get_variables(expr: formulate.AST) -> Set[str]:
+    variables_keeper = set()
+
+    def traverse(node):
+        if node is None:
+            return
+        if isinstance(node, Symbol):
+            variables_keeper.add(node.symbol)
+        if hasattr(node, "left"):
+            traverse(node.left)
+        if hasattr(node, "right"):
+            traverse(node.right)
+
+    traverse(expr)
+
+    return variables_keeper
+
+
 @lru_cache(maxsize=None)
-def _expr_var(expr):
+def get_expression_variables(
+    expr: str, parser: Callable[[str], Any] = formulate.from_root
+) -> Set[str]:
     """
-    converting ROOT expression into set of variables
+    Get variables from an expression
     """
-    for i in range(5):  # maximum attempt
-        try:
-            return set(formulate.from_auto(expr).variables)
-        except Exception as _err:
-            if i < 4:
-                continue
-            raise _err
+    return get_variables(parser(expr))
 
 
 class Filter:
