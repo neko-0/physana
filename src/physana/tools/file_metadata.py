@@ -18,7 +18,7 @@ class FileMetaData:
         The campaign of the file, e.g., "mc16a" or "2015".
     dataset_id : int
         The dataset ID of the file.
-    tag : str
+    e_tag : str
         The e-tag of the file.
     num_executed_files : int
         The number of executed files.
@@ -30,7 +30,7 @@ class FileMetaData:
         "data_type",
         "campaign",
         "dataset_id",
-        "tag",
+        "e_tag",
         "num_executed_files",
         "num_events",
     )
@@ -47,7 +47,7 @@ class FileMetaData:
         self.data_type: str = None
         self.campaign: str = None
         self.dataset_id: int = None
-        self.tag: str = None
+        self.e_tag: str = None
         self.num_executed_files: int = None
         self.num_events: int = None
 
@@ -59,11 +59,11 @@ class FileMetaData:
 
     def _load_metadata(self, tfile: uproot.ReadOnlyDirectory) -> None:
         if 'metadata' not in tfile:
-            raise ValueError("File does not contain metadata")
+            raise ValueError(f"{tfile.file_path} does not contain metadata")
         labels = tfile['metadata'].axis().labels()
         self.data_type = labels[0]
         self.campaign = labels[1]
-        self.dataset_id = labels[2]
-        self.tag = labels[3]
+        self.dataset_id = int(labels[2])
+        self.e_tag = labels[3]
         self.num_executed_files = tfile['EventLoop_FileExecuted'].num_entries
         self.num_events = int(tfile['EventLoop_EventCount'].values()[0])
