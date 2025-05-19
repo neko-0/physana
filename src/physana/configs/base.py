@@ -297,11 +297,11 @@ class ConfigMgr:
             new_config.__dict__[d_key] = deepcopy(config.__dict__[d_key])
         return new_config
 
-    def reserve_branches(self, expr=None):
+    def reserve_branches(self, expr=None, parser=from_root):
         if isinstance(expr, list):
             parsed = set(expr)
         elif expr:
-            parsed = get_expression_variables(expr)
+            parsed = get_expression_variables(expr, parser=parser)
         else:
             parsed = None
         if parsed:
@@ -372,7 +372,7 @@ class ConfigMgr:
                         b_result = self_reserve_branches(r.weights)
                         self._region_branch_dict[r.name] |= b_result
                     if r.selection:
-                        b_result = self_reserve_branches(r.selection)
+                        b_result = self_reserve_branches(r.selection, from_numexpr)
                         self._region_branch_dict[r.name] |= b_result
                     pbar_regions.update()
 
@@ -396,7 +396,7 @@ class ConfigMgr:
             p_branch = self._process_branch_dict[name]
             for p in my_p_set:
                 if p.selection:
-                    p_branch |= self.reserve_branches(p.selection)
+                    p_branch |= self.reserve_branches(p.selection, from_numexpr)
                 if isinstance(p.weights, str):
                     p_branch |= self.reserve_branches(p.weights)
                 elif isinstance(p.weights, numbers.Number):
