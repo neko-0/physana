@@ -29,12 +29,16 @@ def run_histmaker_json(config):
 @click.option("--file", type=str, help="input config name.")
 @click.option("--output", type=str, help="output config name.")
 @click.option("--forcefill/--no-forcefill", default=False)
-def histmaker_fill(file, output, forcefill):
+@click.option("--start", type=int, default=None, help="entry start.")
+@click.option("--stop", type=int, default=None, help="entry stop.")
+def histmaker_fill(file, output, forcefill, start, stop):
     """
     Command line interface to fill a ConfigMgr object.
     Currently only the default HistMaker can be used.
     """
-    run_HistMaker.run_algorithm(file, algorithm=None, forcefill=forcefill).save(output)
+    run_HistMaker.run_algorithm(
+        file, algorithm=None, forcefill=forcefill, entry_start=start, entry_stop=stop
+    ).save(output)
 
 
 @cli.command(name='run-syst')

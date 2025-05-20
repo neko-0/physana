@@ -149,7 +149,7 @@ class HistMaker(BaseAlgorithm):
         self._tree_ibatch: int = 0
         self._is_init: bool = False
         self._is_close: bool = False
-        self.step_size: str = "50MB"
+        self.step_size: str = "5MB"
         self.disable_pbar: bool = False
         self.fill_file_status: Optional[Dict[str, Any]] = None
         self.use_mmap: bool = use_mmap
@@ -304,9 +304,9 @@ class HistMaker(BaseAlgorithm):
     def raw_open(self, *args, **kwargs):
         return uproot.open(*args, **kwargs)
 
-    def set_entry_range(self, entry_start, entry_end):
+    def set_entry_range(self, entry_start, entry_stop):
         self._entry_start = entry_start
-        self._entry_end = entry_end
+        self._entry_stop = entry_stop
 
     def skip_dummy(self, p):
         if p.systematics is None:
@@ -656,7 +656,10 @@ class HistMaker(BaseAlgorithm):
             if ttree is None or ttree.num_entries == 0:
                 return p.copy() if copy else p
 
-            total_entries = ttree.num_entries
+            if self._entry_start is not None and self._entry_stop is not None:
+                total_entries = self._entry_stop - self._entry_start
+            else:
+                total_entries = ttree.num_entries
 
             # setting the current systematics tag
             self.set_systematics_tag(p)

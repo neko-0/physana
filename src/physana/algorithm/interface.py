@@ -32,6 +32,8 @@ def run_algorithm(
     input_config: str | ConfigMgr,
     algorithm: Optional[BaseAlgorithm] = None,
     forcefill: bool = False,
+    entry_start: int = None,
+    entry_stop: int = None,
     **process_kwargs: Dict[str, Any],
 ) -> ConfigMgr:
     """
@@ -62,6 +64,7 @@ def run_algorithm(
         logger.warning("config is already filled")
         return config
     algorithm.initialize()
+    algorithm.set_entry_range(entry_start, entry_stop)
     algorithm.prepare(config)
     algorithm.meta_data_from_config(config)
     algorithm.process(config, **process_kwargs)
