@@ -837,7 +837,7 @@ class HistMaker(BaseAlgorithm):
                         fstatus = ", ".join(
                             [
                                 f"{current_nevent / total_entries*100.0:.2f}%",
-                                f"{total_entries} events",
+                                f"total events {total_entries}",
                                 f"dt={perf_counter()-t_start:.2f}s/file",
                                 self.fill_file_status or "",
                             ]
