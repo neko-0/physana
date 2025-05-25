@@ -826,9 +826,17 @@ class HistMaker(BaseAlgorithm):
                         histogram_loop(r.histograms, mask, event, weights, sumW2)
 
                     if self.disable_pbar:
+                        if self._entry_start is not None:
+                            current_nevent = (
+                                self._entry_start
+                                + report.tree_entry_stop
+                                - report.tree_entry_start
+                            )
+                        else:
+                            current_nevent = report.tree_entry_stop
                         fstatus = ", ".join(
                             [
-                                f"{report.tree_entry_stop / total_entries*100.0:.2f}%",
+                                f"{current_nevent / total_entries*100.0:.2f}%",
                                 f"{total_entries} events",
                                 f"dt={perf_counter()-t_start:.2f}s/file",
                                 self.fill_file_status or "",
