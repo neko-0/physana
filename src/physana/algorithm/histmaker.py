@@ -14,7 +14,10 @@ from typing import Optional, Callable, List, Dict, Any
 
 from .algorithm import BaseAlgorithm
 from ..histo import Histogram, Histogram2D
-from ..histo.jitfunc import apply_phsp_correction, is_none_zero, parallel_nonzero_count
+from ..histo.jitfunc import USE_JIT
+from ..histo.jitfunc import apply_phsp_correction
+from ..histo.jitfunc import is_none_zero as jit_is_none_zero
+from ..histo.jitfunc import parallel_nonzero_count as jit_parallel_nonzero_count
 from ..tools.xsec import PMGXsec
 from ..tools.sum_weights import SumWeightTool
 
@@ -24,10 +27,19 @@ logger.setLevel(logging.INFO)
 
 
 def _apply_phsp(weights, sumW2, phsp, phsp_err):
-    # sumW2 *= phsp**2
-    # sumW2 += (weights * phsp_err) ** 2
-    # weights *= phsp
-    apply_phsp_correction(weights, sumW2, phsp, phsp_err)
+    if USE_JIT:
+        apply_phsp_correction(weights, sumW2, phsp, phsp_err)
+    else:
+        sumW2 *= phsp**2
+        sumW2 += (weights * phsp_err) ** 2
+        weights *= phsp
+
+
+def is_none_zero(x):
+    if USE_JIT:
+        return jit_is_none_zero(x)
+    else:
+        return np.any(x)
 
 
 def histogram_eval(event, mask, *observables):
@@ -206,6 +218,7 @@ class HistMaker(BaseAlgorithm):
         self._selection_tracker: Dict[str, Dict[str, Any]] = defaultdict(dict)
 
         # file processing variables and threads
+        self.use_threads: bool = True
         self.file_nthreads: Optional[int] = None
         self.f_decompression_executor: Optional[ThreadPoolExecutor] = None
         self.f_interpretation_executor: Optional[ThreadPoolExecutor] = None
@@ -292,13 +305,15 @@ class HistMaker(BaseAlgorithm):
         if "xrootd_handler" not in kwargs:
             opts.update({"xrootd_handler": uproot.MultithreadedXRootDSource})
         if use_mmap or self.use_mmap:
-            kwargs.setdefault("file_handler", uproot.MemmapSource)
+            kwargs.setdefault("handler", uproot.MemmapSource)
             kwargs.update(opts)
         else:
-            kwargs.setdefault("file_handler", uproot.MultithreadedFileSource)
+            kwargs.setdefault("handler", uproot.MultithreadedFileSource)
             # kwargs.setdefault("num_workers", 2)
             # kwargs.setdefault("executor", self.f_decompression_executor)
             kwargs.update(opts)
+        if not self.use_threads:
+            kwargs.setdefault("use_threads", self.use_threads)
         return uproot.open(file_name, *args, **kwargs)
 
     def raw_open(self, *args, **kwargs):
@@ -765,7 +780,7 @@ class HistMaker(BaseAlgorithm):
 
                         # go to next iteration if no events passed both
                         # process and region level selection
-                        non_zero_count = parallel_nonzero_count(mask)
+                        non_zero_count = jit_parallel_nonzero_count(mask)
                         if non_zero_count == 0:
                             logger.debug("no event after region selection.")
                             continue

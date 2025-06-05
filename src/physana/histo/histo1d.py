@@ -7,7 +7,9 @@ if TYPE_CHECKING:
     import uproot
     import ROOT
 
-from . import jitfunc
+from .jitfunc import USE_JIT
+from .jitfunc import find_content_and_error_1d as jit_content_err_1d
+from .jitfunc import alt_chuck_digitize_1d as jit_digitize_1d
 from .histo_base import HistogramBase, _hadd, _hsub, _hdiv, _hmul
 from ..backends.root import from_th1, to_th1, to_root_graph
 from ..systematics.syst_band import SystematicsBand
@@ -319,9 +321,7 @@ class Histogram(HistogramBase):
         return np.sqrt(self._sumW2[index])
 
     def find_content_and_error(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        return jitfunc.find_content_and_error_1d(
-            x, self.bins, self._bin_content, self._sumW2
-        )
+        return jit_content_err_1d(x, self.bins, self._bin_content, self._sumW2)
 
     @staticmethod
     def digitize(
@@ -336,18 +336,18 @@ class Histogram(HistogramBase):
         # return jitfunc.digitize_1d(
         #     np.asarray(data, np.double), np.asarray(bins, np.double), weight, w2
         # )
-        """
-        regualr approach
-        """
-        # content = [np.sum(m_w[digitized == i]) for i in bin_range]
-        # sumW2 = [np.sum(m_w2[digitized == i]) for i in bin_range]
-        # return np.asarray(content), np.asarray(sumW2)
-        """
-        jit parallel approach
-        """
-        return jitfunc.alt_chuck_digitize_1d(
-            np.asarray(data, np.double), np.asarray(bins, np.double), weight, w2
-        )
+        if USE_JIT:
+            return jit_digitize_1d(
+                np.asarray(data, np.double), np.asarray(bins, np.double), weight, w2
+            )
+        else:
+            digitized = np.digitize(data, bins)
+            nbins = len(bins) + 1
+            content = np.bincount(digitized, weights=weight, minlength=nbins)
+            if w2 is None:
+                w2 = weight**2
+            sumW2 = np.bincount(digitized, weights=w2, minlength=nbins)
+            return content, sumW2
 
     def from_array(
         self,
