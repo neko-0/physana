@@ -671,10 +671,17 @@ class HistMaker(BaseAlgorithm):
             if ttree is None or ttree.num_entries == 0:
                 return p.copy() if copy else p
 
+            # check entry range and total entries
+            total_tree_entries = ttree.num_entries
             if self._entry_start is not None and self._entry_stop is not None:
-                total_entries = self._entry_stop - self._entry_start
+                entry_range = self._entry_stop - self._entry_start
+                total_entries = (
+                    min(entry_range, total_tree_entries)
+                    if entry_range > 0 and self._entry_start <= total_tree_entries
+                    else 0
+                )
             else:
-                total_entries = ttree.num_entries
+                total_entries = total_tree_entries
 
             # setting the current systematics tag
             self.set_systematics_tag(p)
