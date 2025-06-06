@@ -18,7 +18,7 @@ def test_process_swapping():
 
     config.set_systematics("wjets", ["sys1", "sys2"])
 
-    config.add_region("region-1", "pt>500", weight="eventWeight")
+    config.add_region("region-1", "pt>500", weights="eventWeight")
 
     config.prepare(use_mp=False)
 
@@ -35,7 +35,7 @@ def test_process_swapping():
 
     config2.set_systematics("wjets", ["sys2", "sys3"])
 
-    config2.add_region("region-2", "pt>800", weight="eventWeight")
+    config2.add_region("region-2", "pt>800", weights="eventWeight")
 
     config2.prepare(use_mp=False)
 
