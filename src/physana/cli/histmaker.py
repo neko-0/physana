@@ -16,11 +16,21 @@ def cli():
 @click.option(
     "--config", type=str, help="path to the JSON configuration for HistMaker."
 )
-def run_histmaker_json(config):
+@click.option("--combine/--no-combine", default=False)
+def run_histmaker_json(config, combine):
     """
     Run HistMaker from a JSON configuration file.
     """
-    histmaker_json = routines_hmaker.JSONHistSetup(config)
+
+    if combine:
+        histmaker_json = routines_hmaker.combine_json_setups(config)
+    else:
+        config = config.split(',')
+        if len(config) > 1:
+            histmaker_json = routines_hmaker.combine_json_setups(config)
+        else:
+            histmaker_json = routines_hmaker.JSONHistSetup(config[0])
+
     histmaker_json.initialize()
     histmaker_json.launch()
 
