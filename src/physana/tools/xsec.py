@@ -1,6 +1,8 @@
 import numpy as np
 from functools import lru_cache
 
+from .singleton import singleton
+
 
 class PMGSampleInfo:
     __slots__ = (
@@ -35,6 +37,7 @@ class PMGSampleInfo:
         self.effective_xsec = ami_xsec * filter_eff * k_factor
 
 
+@singleton
 class PMGXsec:
     def __init__(self, xsec_file):
         self.xsec_file = xsec_file
