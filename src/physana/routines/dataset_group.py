@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import List, Dict, Union, Set, Optional
 
 TypeDSIDList = Union[List[int], List[str]]
@@ -63,3 +64,30 @@ def get_ntuple_files(
             process_file_map[mc][process].append(file)
 
     return process_file_map
+
+
+def get_nfiles(
+    process: str, process_files: List[str], nfiles: Optional[int] = None
+) -> List[str]:
+    """
+    Get a list of files corresponding to a specific process and DSIDs.
+
+    Args:
+        process (str): The name of the process to retrieve files for.
+        process_files (List[str]): List of all available files for the process.
+        nfiles (Optional[int]): The maximum number of files to retrieve for each DSID. If None, all files are retrieved.
+
+    Returns:
+        List[str]: A list of files for the specified process and DSID, limited by nfiles if specified.
+    """
+    dsid_file_map: Dict[str | int, List[str]] = defaultdict(list)
+    for file in process_files:
+        for dsid in DSID_MAP[process]:
+            if str(dsid) in file:
+                dsid_file_map[dsid].append(file)
+
+    output_files: List[str] = []
+    for files in dsid_file_map.values():
+        output_files += files[:nfiles]
+
+    return output_files
