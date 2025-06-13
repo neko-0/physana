@@ -18,23 +18,43 @@ class PMGSampleInfo:
 
     def __init__(
         self,
-        dsid,
-        container_name,
-        ami_xsec,
-        filter_eff,
-        k_factor,
-        xsec_unc_up,
-        xsec_unc_down,
-    ):
-        self.dsid = dsid
-        self.container_name = container_name
-        self.ami_xsec = ami_xsec
-        self.filter_eff = filter_eff
-        self.k_factor = k_factor
-        self.xsec_unc_up = xsec_unc_up
-        self.xsec_unc_down = xsec_unc_down
+        dsid: int,
+        container_name: str,
+        ami_xsec: float,
+        filter_eff: float,
+        k_factor: float,
+        xsec_unc_up: float,
+        xsec_unc_down: float,
+    ) -> None:
+        """
+        Initialize a PMGSampleInfo object.
 
-        self.effective_xsec = ami_xsec * filter_eff * k_factor
+        Parameters
+        ----------
+        dsid : int
+            The dataset ID.
+        container_name : str
+            The name of the container containing this sample.
+        ami_xsec : float
+            The AMI cross-section for this sample.
+        filter_eff : float
+            The filter efficiency for this sample.
+        k_factor : float
+            The k-factor for this sample.
+        xsec_unc_up : float
+            The upward uncertainty on the cross-section.
+        xsec_unc_down : float
+            The downward uncertainty on the cross-section.
+        """
+        self.dsid: int = dsid
+        self.container_name: str = container_name
+        self.ami_xsec: float = ami_xsec
+        self.filter_eff: float = filter_eff
+        self.k_factor: float = k_factor
+        self.xsec_unc_up: float = xsec_unc_up
+        self.xsec_unc_down: float = xsec_unc_down
+
+        self.effective_xsec: float = ami_xsec * filter_eff * k_factor
 
 
 @singleton
