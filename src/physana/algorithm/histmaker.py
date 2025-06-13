@@ -611,10 +611,10 @@ class HistMaker(BaseAlgorithm):
                 for old_b, new_b in self.branch_rename.items()
             }
 
-        if self.sum_weight_tool:
+        if self.sum_weights_tool:
             branch_filter |= {
-                self.sum_weight_tool.dsid_branch,
-                self.sum_weight_tool.run_number_branch,
+                self.sum_weights_tool.dsid_branch,
+                self.sum_weights_tool.run_number_branch,
             } - {None, ""}
 
         if self.enable_systematics:
@@ -693,7 +693,8 @@ class HistMaker(BaseAlgorithm):
             self._region_weight_tracker = {}
 
             # setup sum weight tool state from process
-            self.sum_weight_tool.load_state_from_process(p)
+            self.sum_weights_tool.load_state_from_process(p)
+            sum_weights_tool = self.sum_weights_tool  # avoid dot lookup
 
             # setup PMG xsec tool
             if p.is_data:
@@ -701,8 +702,9 @@ class HistMaker(BaseAlgorithm):
             elif self.xsec_file:
                 logger.info(f"Initializing PMG xsec tool with {self.xsec_file}")
                 self.xsec_tool = PMGXsec(self.xsec_file)
+                _xsec_tool = self.xsec_tool
                 # hard coded the dsid for now
-                xsec_tool = lambda event: self.xsec_tool(event["mcChannelNumber"])
+                xsec_tool = lambda event: _xsec_tool(event["mcChannelNumber"])
 
             # check if external histogram looping is provided
             if histogram_method:
@@ -800,7 +802,7 @@ class HistMaker(BaseAlgorithm):
                         # MC only weights
                         if not p.is_data:
                             # multiply MC xsec and divide by sum weights
-                            weights *= xsec_tool(event) / self.sum_weight_tool(event)
+                            weights *= xsec_tool(event) / sum_weights_tool(event)
 
                         # combine region and process weights
                         r_weights = region_weights_parser(r, p_weights)
@@ -849,11 +851,7 @@ class HistMaker(BaseAlgorithm):
 
                     if self.disable_pbar:
                         if self._entry_start is not None:
-                            current_nevent = (
-                                self._entry_start
-                                + report.tree_entry_stop
-                                - report.tree_entry_start
-                            )
+                            current_nevent = report.tree_entry_stop - self._entry_start
                         else:
                             current_nevent = report.tree_entry_stop
                         fstatus = ", ".join(
@@ -908,7 +906,7 @@ class HistMaker(BaseAlgorithm):
             if self.skip_dummy(p):  # skip dummy if specified in skip_dummy_processes
                 continue
 
-            self.sum_weight_tool = SumWeightTool(self.sum_weights_file)
+            self.sum_weights_tool = SumWeightTool(self.sum_weights_file)
 
             psets_pbar.set_description(f"On process set: {p.name}")
             file_pbar = tqdm(
