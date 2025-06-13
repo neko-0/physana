@@ -10,7 +10,7 @@ from fnmatch import fnmatch
 from numexpr import evaluate as ne_evaluate
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from collections import defaultdict
-from typing import Optional, Callable, List, Dict, Any
+from typing import Optional, Callable, List, Dict, Any, Union
 
 from .algorithm import BaseAlgorithm
 from ..histo import Histogram, Histogram2D
@@ -207,7 +207,7 @@ class HistMaker(BaseAlgorithm):
 
         # PMG xsec tool
         self.xsec_file: Optional[str] = None
-        self.xsec_tool: Callable[[str], float] = lambda x: 1.0
+        self.xsec_tool: Optional[Callable[[Union[int, np.ndarray]], float]] = None
 
         # systematics name handling
         self.enable_systematics: bool = True
@@ -237,6 +237,21 @@ class HistMaker(BaseAlgorithm):
         if self._is_init:
             return None
         self._is_init = True
+
+        if self.sum_weights_tool is None:
+            # setup sum weight tool
+            logger.info(f"SumWeightTool file: {self.sum_weights_file}")
+            self.sum_weights_tool = SumWeightTool(self.sum_weights_file)
+
+        # setup PMG xsec tool
+        if self.xsec_tool is None:
+            if self.xsec_file:
+                logger.info(f"PMGXsec file: {self.xsec_file}")
+                _xsec_tool = PMGXsec(self.xsec_file)
+                # hard coded the dsid for now
+                self.xsec_tool = lambda event: _xsec_tool(event["mcChannelNumber"])
+            else:
+                self.xsec_tool = lambda x: 1.0
 
     def finalise(self):
         """
@@ -692,19 +707,14 @@ class HistMaker(BaseAlgorithm):
             # clear existing region weights tracker
             self._region_weight_tracker = {}
 
-            # setup sum weight tool state from process
-            self.sum_weights_tool.load_state_from_process(p)
-            sum_weights_tool = self.sum_weights_tool  # avoid dot lookup
+            # assign local variable to avoid dot lookup
+            sum_weights_tool = self.sum_weights_tool
 
-            # setup PMG xsec tool
+            # xsec tool for data and MC
             if p.is_data:
-                xsec_tool = self.xsec_tool  # default return 1
-            elif self.xsec_file:
-                logger.info(f"Initializing PMG xsec tool with {self.xsec_file}")
-                self.xsec_tool = PMGXsec(self.xsec_file)
-                _xsec_tool = self.xsec_tool
-                # hard coded the dsid for now
-                xsec_tool = lambda event: _xsec_tool(event["mcChannelNumber"])
+                xsec_tool = lambda x: 1.0
+            else:
+                xsec_tool = self.xsec_tool
 
             # check if external histogram looping is provided
             if histogram_method:
@@ -900,13 +910,15 @@ class HistMaker(BaseAlgorithm):
             pFilter = [pFilter]
         else:
             pFilter = set()
+        # start running algorithm for process
         for p in processes:
             if p.name in pFilter:
                 continue
             if self.skip_dummy(p):  # skip dummy if specified in skip_dummy_processes
                 continue
 
-            self.sum_weights_tool = SumWeightTool(self.sum_weights_file)
+            # load state from process
+            self.sum_weights_tool.load_state_from_process(p)
 
             psets_pbar.set_description(f"On process set: {p.name}")
             file_pbar = tqdm(
