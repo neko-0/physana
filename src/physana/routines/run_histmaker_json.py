@@ -383,6 +383,8 @@ def preparing_jobs(
 
                 config_name = f"{json_config.out_path}/input_{name}/input_{ifile}_{start}_{end}.pkl"
                 if not pathlib.Path(config_name).exists():
+                    if json_config.others.get("prepare_prior_save", False):
+                        sub_config.prepare()
                     config_name = sub_config.save(config_name)
                 cache_split_keeper.append([str(config_name), start, end])
             else:
