@@ -4,7 +4,10 @@ import fnmatch
 from functools import lru_cache
 from typing import Any, Set, Callable
 import formulate
-from formulate.AST import Symbol
+
+if formulate.__version__ >= "1.0.0":
+    from formulate.AST import Symbol
+
 
 _all_slots_cache = {}
 
@@ -36,20 +39,21 @@ class RecursionLimit:
 
 
 @lru_cache(maxsize=None)
-def from_root(expr: str, *, rlimit: int = 1500) -> formulate.AST:
+def from_root(expr: str, *, rlimit: int = 5000) -> "formulate.AST":
     try:
         with RecursionLimit(rlimit):  # For long expression
             return formulate.from_root(expr)
     except Exception as _error:
-        raise Exception(f"unable to parse {expr}") from _error
+        raise Exception(f"unable to parse root {expr}") from _error
 
 
 @lru_cache(maxsize=None)
-def from_numexpr(expr: str) -> formulate.AST:
+def from_numexpr(expr: str, rlimit: int = 5000) -> "formulate.AST":
     try:
-        return formulate.from_numexpr(expr)
+        with RecursionLimit(rlimit):
+            return formulate.from_numexpr(expr)
     except Exception as _error:
-        raise Exception(f"unable to parse {expr}") from _error
+        raise Exception(f"unable to parse numexpr {expr}") from _error
 
 
 @lru_cache(maxsize=None)
@@ -59,27 +63,32 @@ def to_numexpr(expr: str) -> str:
     return expr
 
 
-def get_variables(expr: formulate.AST) -> Set[str]:
-    variables_keeper = set()
+# Temperary workaround for older version
+if formulate.__version__ < "1.0.0":
+    get_variables = lambda x: x.variables
+else:
 
-    def traverse(node):
-        if node is None:
-            return
-        if isinstance(node, Symbol):
-            variables_keeper.add(node.symbol)
-        if hasattr(node, "left"):
-            traverse(node.left)
-        if hasattr(node, "right"):
-            traverse(node.right)
+    def get_variables(expr: "formulate.AST") -> Set[str]:
+        variables_keeper = set()
 
-    traverse(expr)
+        def traverse(node):
+            if node is None:
+                return
+            if isinstance(node, Symbol):
+                variables_keeper.add(node.symbol)
+            if hasattr(node, "left"):
+                traverse(node.left)
+            if hasattr(node, "right"):
+                traverse(node.right)
 
-    return variables_keeper
+        traverse(expr)
+
+        return variables_keeper
 
 
 @lru_cache(maxsize=None)
 def get_expression_variables(
-    expr: str, parser: Callable[[str], Any] = formulate.from_root
+    expr: str, parser: Callable[[str], Any] = from_root
 ) -> Set[str]:
     """
     Get variables from an expression
