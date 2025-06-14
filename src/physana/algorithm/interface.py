@@ -63,12 +63,15 @@ def run_algorithm(
     if not forcefill and config.filled:
         logger.warning("config is already filled")
         return config
+    # need to run prepare config first, then load meta data
+    algorithm.prepare(config)
     algorithm.meta_data_from_config(config)
+    # algorithm start
     algorithm.initialize()
     algorithm.set_entry_range(entry_start, entry_stop)
-    algorithm.prepare(config)
     algorithm.process(config, **process_kwargs)
     algorithm.finalise()
+    # set the config fill status
     config.filled = True
     return config
 
