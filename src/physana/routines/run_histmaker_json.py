@@ -488,7 +488,7 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
     futures: Dict[str, List[Future]] = defaultdict(list)
     results: Dict[str, List[Any]] = defaultdict(list)
 
-    with Client(cluster) as pool:
+    with cluster, Client(cluster) as pool:
         for name, job_list in prepared_jobs.items():
             futures_name_append = futures[name].append
             for i in range(0, len(job_list), batch_size):
@@ -534,8 +534,6 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
                     failed[name] = True
                     results[name] = []
                     break
-
-    cluster.close()
 
     if not any(failed.values()):
         for name, result in results.items():
