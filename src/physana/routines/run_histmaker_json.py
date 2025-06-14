@@ -305,7 +305,7 @@ def generate_config(
 
     setting.RAISE_TREENAME_ERROR = False
 
-    setting.xsec_file = "/cvmfs/atlas.cern.ch/repo/sw/database/GroupData/dev/PMGTools/PMGxsecDB_mc16.txt"
+    setting.xsec_file = json_config.others["xsec_file"]
 
     return setting
 
