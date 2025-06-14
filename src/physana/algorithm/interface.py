@@ -63,10 +63,10 @@ def run_algorithm(
     if not forcefill and config.filled:
         logger.warning("config is already filled")
         return config
+    algorithm.meta_data_from_config(config)
     algorithm.initialize()
     algorithm.set_entry_range(entry_start, entry_stop)
     algorithm.prepare(config)
-    algorithm.meta_data_from_config(config)
     algorithm.process(config, **process_kwargs)
     algorithm.finalise()
     config.filled = True
@@ -263,8 +263,8 @@ def _syst_process(
     logger.info(f"Filtering missing tree for {c_config.name}")
     filter_missing_ttree(c_config, use_mp=False)
     logger.info(f"start processing {c_config.name}")
-    hist_maker.initialize()
     hist_maker.meta_data_from_config(c_config)
+    hist_maker.initialize()
     hist_maker.process(c_config, ext_pweight=ext_pweight)
     hist_maker.finalise()
     c_config.corrections.clear_buffer()
@@ -548,8 +548,8 @@ def _run_HistMaker(config_mgr, ext_pweight, type=None, **process_kwargs):
         hist_maker = HistMaker()
     elif type == 'bootstrap':
         hist_maker = strategies.bootstrap.BootstrapHistMaker()
-    hist_maker.initialize()
     hist_maker.meta_data_from_config(config_mgr)
+    hist_maker.initialize()
     hist_maker.process(config_mgr, ext_pweight=ext_pweight, **process_kwargs)
     hist_maker.finalise()
 
@@ -605,8 +605,8 @@ def _process(configuration):
     if not config_mgr.prepared:
         config_mgr.prepare(use_mp=False)
 
-    hist_maker.initialize()
     hist_maker.meta_data_from_config(config_mgr)
+    hist_maker.initialize()
     hist_maker.process(config_mgr, ext_pweight=external_weight)
     hist_maker.finalise()
     config_mgr.corrections.clear_buffer()
