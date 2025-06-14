@@ -1,8 +1,8 @@
 import sys
 import re
-import fnmatch
+from fnmatch import translate
 from functools import lru_cache
-from typing import Any, Set, Callable
+from typing import Any, Set, Callable, List, Union, Optional
 import formulate
 
 if formulate.__version__ >= "1.0.0":
@@ -116,57 +116,70 @@ class Filter:
 
     __slots__ = ['_pattern', '_key']
 
-    def __init__(self, values=None, key='full_name'):
+    def __init__(
+        self, values: Optional[List[str]] = None, key: str = 'full_name'
+    ) -> None:
         """
         Construct a Filter object.
 
         Args:
-            values (:obj:`list` of :obj:`str`): A list of values to filter out.
+            values: A list of values to filter out.
+            key: The attribute name to use for filtering.
 
         Returns:
-            filter (:class:`~physana.core.Filter`): The Filter instance.
+            None
         """
         values = values or []
         self._pattern = (
-            re.compile('|'.join(fnmatch.translate(value) for value in values))
+            re.compile('|'.join(translate(value) for value in values))
             if values
             else None
         )
         self._key = key
 
-    def match(self, value):
+    def match(self, value: str) -> Union[None, str, bool]:
         """
         Match the excluded values against the provided value.
 
         Args:
-            value (:obj:`str`): The value to check against the filtered values.
+            value (str): The value to check against the filtered values.
 
         Returns:
-            None or matched substring.
+            Union[None, str, bool]: The matched substring if a match is found,
+            False if no pattern is defined, or None if no match occurs.
         """
         return self._pattern.match(value) if self._pattern is not None else False
 
-    def accept(self, obj):
+    def accept(self, obj: object) -> bool:
         """
         Whether the provided object's key is allowed or not based on specified excluded values.
 
         Args:
-            obj (:obj:`object`): An object with Filter.key attribute.
+            obj (object): An object with Filter.key attribute.
 
         Returns:
-            Bool: ``True`` if the value is accepted or ``False`` if the value is not accepted.
+            bool: ``True`` if the value is accepted or ``False`` if the value is not accepted.
         """
-        if self._pattern is None:
+        if self._pattern is None:  # type: ignore
             return True
         try:
-            value = getattr(obj, self.key)
+            value = getattr(obj, self.key)  # type: ignore
             if value is None:
                 return False
         except AttributeError:
             raise ValueError(f'{obj} does not have a {self.key} attribute')
         return bool(self.match(value))
 
-    def filter(self, obj):
+    def filter(self, obj: object) -> bool:
+        """
+        Whether the provided object's key is excluded or not based on specified excluded values.
+
+        Args:
+            obj (object): An object with Filter.key attribute.
+
+        Returns:
+            bool: ``True`` if the value is excluded or ``False`` if the value is not excluded.
+        """
         return not self.accept(obj)
 
     @property
@@ -182,9 +195,16 @@ class Filter:
         return self._pattern
 
     @pattern.setter
-    def pattern(self, values):
+    def pattern(self, values: List[str]) -> None:
+        """
+        Set the pattern value of the Filter object.
+
+        Args:
+            values (List[str]): A list of string values to use as the pattern.
+
+        Raises:
+            TypeError: if the input is not a list.
+        """
         if not isinstance(values, list):
             raise TypeError(f"Invalid type {type(values)}")
-        self._pattern = re.compile(
-            '|'.join(fnmatch.translate(value) for value in values)
-        )
+        self._pattern = re.compile('|'.join(translate(value) for value in values))
