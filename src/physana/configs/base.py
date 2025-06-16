@@ -16,7 +16,7 @@ import numpy as np
 from tqdm import tqdm
 
 from ..histo import ProcessSet, Region, Histogram, Histogram2D
-from ..histo.tools import from_root, from_numexpr, _expr_var
+from ..histo.tools import from_root, from_numexpr, get_expression_variables
 from ..systematics import Systematics
 from ..serialization import Serialization
 from ..serialization.base import async_from_pickles
@@ -38,6 +38,7 @@ class ConfigMgr:
         description="",
     ):
         self.name = name
+        self.filename = None
         self.ntuple_src_path = ntuple_src_path
         self.output_path = output_path
         self.descriptions = description
@@ -143,6 +144,9 @@ class ConfigMgr:
         for key in deepcopy_keys:
             copy_self.__dict__[key] = deepcopy(self.__dict__[key], memo)
         return copy_self
+
+    def __str__(self):
+        return f"{self.name}:{self.filename}"
 
     @property
     def region_list(self):
@@ -293,11 +297,11 @@ class ConfigMgr:
             new_config.__dict__[d_key] = deepcopy(config.__dict__[d_key])
         return new_config
 
-    def reserve_branches(self, expr=None):
+    def reserve_branches(self, expr=None, parser=from_root):
         if isinstance(expr, list):
             parsed = set(expr)
         elif expr:
-            parsed = _expr_var(expr)
+            parsed = get_expression_variables(expr, parser=parser)
         else:
             parsed = None
         if parsed:
@@ -327,11 +331,13 @@ class ConfigMgr:
                 if r.branch_reserved:
                     continue
                 if r.weights:
-                    # weight.append(executor.submit(_expr_var, r.weights))
-                    weight[r.name] = executor.submit(_expr_var, r.weights)
+                    weight[r.name] = executor.submit(
+                        get_expression_variables, r.weights
+                    )
                 if r.selection:
-                    # selection.append(executor.submit(_expr_var, r.selection))
-                    selection[r.name] = executor.submit(_expr_var, r.selection)
+                    selection[r.name] = executor.submit(
+                        get_expression_variables, r.selection
+                    )
             # branches = weight + selection
             # num_regions = len(branches)
             num_regions = len(weight) + len(selection)
@@ -366,7 +372,7 @@ class ConfigMgr:
                         b_result = self_reserve_branches(r.weights)
                         self._region_branch_dict[r.name] |= b_result
                     if r.selection:
-                        b_result = self_reserve_branches(r.selection)
+                        b_result = self_reserve_branches(r.selection, from_numexpr)
                         self._region_branch_dict[r.name] |= b_result
                     pbar_regions.update()
 
@@ -390,7 +396,7 @@ class ConfigMgr:
             p_branch = self._process_branch_dict[name]
             for p in my_p_set:
                 if p.selection:
-                    p_branch |= self.reserve_branches(p.selection)
+                    p_branch |= self.reserve_branches(p.selection, from_numexpr)
                 if isinstance(p.weights, str):
                     p_branch |= self.reserve_branches(p.weights)
                 elif isinstance(p.weights, numbers.Number):
@@ -721,7 +727,7 @@ class ConfigMgr:
     def open(filename, backend="pickle"):
         logger.info(f"trying to open({filename})")
         _t_start = perf_counter()
-        if isinstance(filename, ConfigMgr):
+        if not isinstance(filename, (str, Path)):
             return filename
         m_serial = Serialization("config")
         try:
@@ -730,9 +736,12 @@ class ConfigMgr:
             elif backend == "shelve":
                 m_config = ConfigMgr.merge(m_serial.from_shelve(filename))
             m_config.update_children_parent()
+            m_config.filename = filename
             return m_config
         except Exception as _error:
-            raise IOError(f"cannot open file: {filename}({type(filename)}) using {backend}") from _error
+            raise IOError(
+                f"cannot open file: {filename}({type(filename)}) using {backend}"
+            ) from _error
         finally:
             t_diff = perf_counter() - _t_start
             logger.info(f"open({filename}) takes {t_diff:.2f}s wall time.")

@@ -1,6 +1,7 @@
 import logging
-import uproot
 from typing import List
+
+from .file_metadata import FileMetaData
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -12,54 +13,6 @@ DATA_YEAR: dict[str, tuple[int, int]] = {
     "2015": (29757, 1694555330),
 }
 
-uproot_open = uproot.open
-
-
-class FileMetaData:
-    """
-    A class to extract metadata from a ROOT file.
-
-    Parameters
-    ----------
-    filename : str
-        The path to the ROOT file.
-
-    Attributes
-    ----------
-    dtype : str
-        The type of the file, e.g., "mc21" or "data".
-    campaign : str
-        The campaign of the file, e.g., "mc16a" or "2015".
-    dsid : int
-        The dataset ID of the file.
-    tag : str
-        The e-tag of the file.
-    num_executed_files : int
-        The number of executed files.
-    nevents : int
-        The number of events in the file.
-    """
-
-    __slots__ = ("dtype", "campaign", "dsid", "tag", "num_executed_files", "nevents")
-
-    def __init__(self, filename: str) -> None:
-        """
-        Initialize the FileMetaData object.
-
-        Parameters
-        ----------
-        filename : str
-            The path to the ROOT file.
-        """
-        with uproot_open(filename) as f:
-            labels = f['metadata'].axis().labels()
-            self.dtype: str = labels[0]
-            self.campaign: str = labels[1]
-            self.dsid: int = labels[2]
-            self.tag: str = labels[3]
-            self.num_executed_files: int = f['EventLoop_FileExecuted'].num_entries
-            self.nevents: int = int(f['EventLoop_EventCount'].values()[0])
-
 
 def check_data_completeness(list_of_files: List[str]) -> None:
     """
@@ -70,15 +23,15 @@ def check_data_completeness(list_of_files: List[str]) -> None:
     list_of_files : list of str
         List of file paths to check for completeness.
     """
-    nfiles = {year: 0 for year in DATA_YEAR}
-    nevents = {year: 0 for year in DATA_YEAR}
+    nfiles: dict[str, int] = {year: 0 for year in DATA_YEAR}
+    nevents: dict[str, int] = {year: 0 for year in DATA_YEAR}
 
     for file in list_of_files:
         fmd = FileMetaData(file)
         if fmd.campaign not in DATA_YEAR:
             continue
         nfiles[fmd.campaign] += fmd.num_executed_files
-        nevents[fmd.campaign] += fmd.nevents
+        nevents[fmd.campaign] += fmd.num_events
 
     for year, (expected_files, expected_events) in DATA_YEAR.items():
         nfile_fail = nfiles[year] != expected_files

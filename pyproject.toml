@@ -94,7 +94,6 @@ force-exclude = '''
   | build
   | dist
   | RooUnfold
-  | configs
   | example
   | docs
   | data

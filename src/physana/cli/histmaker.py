@@ -16,11 +16,21 @@ def cli():
 @click.option(
     "--config", type=str, help="path to the JSON configuration for HistMaker."
 )
-def run_histmaker_json(config):
+@click.option("--combine/--no-combine", default=False)
+def run_histmaker_json(config, combine):
     """
     Run HistMaker from a JSON configuration file.
     """
-    histmaker_json = routines_hmaker.JSONHistSetup(config)
+
+    if combine:
+        histmaker_json = routines_hmaker.combine_json_setups(config)
+    else:
+        config = config.split(',')
+        if len(config) > 1:
+            histmaker_json = routines_hmaker.combine_json_setups(config)
+        else:
+            histmaker_json = routines_hmaker.JSONHistSetup(config[0])
+
     histmaker_json.initialize()
     histmaker_json.launch()
 
@@ -29,12 +39,16 @@ def run_histmaker_json(config):
 @click.option("--file", type=str, help="input config name.")
 @click.option("--output", type=str, help="output config name.")
 @click.option("--forcefill/--no-forcefill", default=False)
-def histmaker_fill(file, output, forcefill):
+@click.option("--start", type=int, default=None, help="entry start.")
+@click.option("--stop", type=int, default=None, help="entry stop.")
+def histmaker_fill(file, output, forcefill, start, stop):
     """
     Command line interface to fill a ConfigMgr object.
     Currently only the default HistMaker can be used.
     """
-    run_HistMaker.run_algorithm(file, algorithm=None, forcefill=forcefill).save(output)
+    run_HistMaker.run_algorithm(
+        file, algorithm=None, forcefill=forcefill, entry_start=start, entry_stop=stop
+    ).save(output)
 
 
 @cli.command(name='run-syst')

@@ -10,12 +10,16 @@ from fnmatch import fnmatch
 from numexpr import evaluate as ne_evaluate
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from collections import defaultdict
+from typing import Optional, Callable, List, Dict, Any, Union
 
 from .algorithm import BaseAlgorithm
-from .sum_weights import SumWeightTool
 from ..histo import Histogram, Histogram2D
-from ..histo.jitfunc import apply_phsp_correction, is_none_zero, parallel_nonzero_count
+from ..histo.jitfunc import USE_JIT
+from ..histo.jitfunc import apply_phsp_correction
+from ..histo.jitfunc import is_none_zero as jit_is_none_zero
+from ..histo.jitfunc import parallel_nonzero_count as jit_parallel_nonzero_count
 from ..tools.xsec import PMGXsec
+from ..tools.sum_weights import SumWeightTool
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -23,10 +27,19 @@ logger.setLevel(logging.INFO)
 
 
 def _apply_phsp(weights, sumW2, phsp, phsp_err):
-    # sumW2 *= phsp**2
-    # sumW2 += (weights * phsp_err) ** 2
-    # weights *= phsp
-    apply_phsp_correction(weights, sumW2, phsp, phsp_err)
+    if USE_JIT:
+        apply_phsp_correction(weights, sumW2, phsp, phsp_err)
+    else:
+        sumW2 *= phsp**2
+        sumW2 += (weights * phsp_err) ** 2
+        weights *= phsp
+
+
+def is_none_zero(x):
+    if USE_JIT:
+        return jit_is_none_zero(x)
+    else:
+        return np.any(x)
 
 
 def histogram_eval(event, mask, *observables):
@@ -137,75 +150,78 @@ class HistMaker(BaseAlgorithm):
     def __init__(
         self,
         *,
-        nthread=None,
-        use_mmap=True,
-        disable_child_thread=True,
-        xsec_sumw=None,
+        nthread: Optional[int] = None,
+        use_mmap: bool = True,
+        disable_child_thread: bool = True,
+        xsec_sumw: Optional[PMGXsec] = None,
     ):
         # processing status variables
-        self._entry_start = 0
-        self._entry_stop = -1
-        self._tree_ibatch = 0
-        self._is_init = False
-        self._is_close = False
-        self.step_size = "50MB"
-        self.disable_pbar = False
-        self.fill_file_status = None
-        self.use_mmap = use_mmap
-        self.report = False
+        self._entry_start: Optional[int] = None
+        self._entry_stop: Optional[int] = None
+        self._tree_ibatch: int = 0
+        self._is_init: bool = False
+        self._is_close: bool = False
+        self.step_size: str = "5MB"
+        self.disable_pbar: bool = False
+        self.fill_file_status: Optional[Dict[str, Any]] = None
+        self.use_mmap: bool = use_mmap
+        self.report: bool = False
 
         # tracking weights defined in regions
-        self._region_weight_tracker = {}
+        self._region_weight_tracker: Dict[str, Dict[str, Any]] = {}
 
         # default weight defined at the HistMaker
-        self.default_weight = None
-        self.enforce_default_weight = False
+        self.default_weight: Optional[float] = None
+        self.enforce_default_weight: bool = False
 
         # old flag for ttree lookup error handling
-        self.RAISE_TREENAME_ERROR = True
+        self.RAISE_TREENAME_ERROR: bool = True
 
         # flag for sumW2 error propagation
-        self.err_prop = True
+        self.err_prop: bool = True
 
         # branches reserved globally
-        self.reserved_branches = None
+        self.reserved_branches: Optional[List[str]] = None
 
         # for branch name renaming in the ttree
-        self.branch_rename = None
+        self.branch_rename: Optional[Dict[str, str]] = None
 
-        self.xsec_sumw = xsec_sumw  # cross section and sum of event weights
-        self.skip_dummy_processes = None
+        self.xsec_sumw: Optional[PMGXsec] = (
+            xsec_sumw  # cross section and sum of event weights
+        )
+        self.skip_dummy_processes: Optional[List[str]] = None
 
         # variables for multi-thread/process histogram filling.
-        self.hist_fill_type = None
-        self.hist_fill_executor = None
+        self.hist_fill_type: Optional[str] = None
+        self.hist_fill_executor: Optional[ThreadPoolExecutor] = None
 
         # phase space correction
-        self.corrections = None
-        self.phasespace_corr_obs = ["nJet30"]
-        self.phasespace_apply_nominal = True
-        self.phsp_fallback = True
+        self.corrections: Optional[Dict[str, Any]] = None
+        self.phasespace_corr_obs: List[str] = ["nJet30"]
+        self.phasespace_apply_nominal: bool = True
+        self.phsp_fallback: bool = True
 
         # file to cutbook sum weights
-        self.sum_weights_file = None
-        self.sum_weights_tool = None
+        self.sum_weights_file: Optional[str] = None
+        self.sum_weights_tool: Optional[SumWeightTool] = None
 
         # PMG xsec tool
-        self.xsec_file = None
-        self.xsec_tool = lambda x: 1.0
+        self.xsec_file: Optional[str] = None
+        self.xsec_tool: Optional[Callable[[Union[int, np.ndarray]], float]] = None
 
         # systematics name handling
-        self.enable_systematics = True
-        self.systematics_tag = "_SYS_"
-        self._current_syst_tag = None
+        self.enable_systematics: bool = True
+        self.systematics_tag: str = "_SYS_"
+        self._current_syst_tag: Optional[str] = None
 
         # selection tracking variables
-        self._selection_tracker = defaultdict(dict)
+        self._selection_tracker: Dict[str, Dict[str, Any]] = defaultdict(dict)
 
         # file processing variables and threads
-        self.file_nthreads = None
-        self.f_decompression_executor = None
-        self.f_interpretation_executor = None
+        self.use_threads: bool = True
+        self.file_nthreads: Optional[int] = None
+        self.f_decompression_executor: Optional[ThreadPoolExecutor] = None
+        self.f_interpretation_executor: Optional[ThreadPoolExecutor] = None
         if mp.current_process().name != "MainProcess" and disable_child_thread:
             self.nthread = 1
         else:
@@ -221,6 +237,21 @@ class HistMaker(BaseAlgorithm):
         if self._is_init:
             return None
         self._is_init = True
+
+        if self.sum_weights_tool is None:
+            # setup sum weight tool
+            logger.info(f"SumWeightTool file: {self.sum_weights_file}")
+            self.sum_weights_tool = SumWeightTool(self.sum_weights_file)
+
+        # setup PMG xsec tool
+        if self.xsec_tool is None:
+            if self.xsec_file:
+                logger.info(f"PMGXsec file: {self.xsec_file}")
+                _xsec_tool = PMGXsec(self.xsec_file)
+                # hard coded the dsid for now
+                self.xsec_tool = lambda event: _xsec_tool(event["mcChannelNumber"])
+            else:
+                self.xsec_tool = lambda x: 1.0
 
     def finalise(self):
         """
@@ -289,17 +320,23 @@ class HistMaker(BaseAlgorithm):
         if "xrootd_handler" not in kwargs:
             opts.update({"xrootd_handler": uproot.MultithreadedXRootDSource})
         if use_mmap or self.use_mmap:
-            kwargs.setdefault("file_handler", uproot.MemmapSource)
+            kwargs.setdefault("handler", uproot.MemmapSource)
             kwargs.update(opts)
         else:
-            kwargs.setdefault("file_handler", uproot.MultithreadedFileSource)
+            kwargs.setdefault("handler", uproot.MultithreadedFileSource)
             # kwargs.setdefault("num_workers", 2)
             # kwargs.setdefault("executor", self.f_decompression_executor)
             kwargs.update(opts)
+        if not self.use_threads:
+            kwargs.setdefault("use_threads", self.use_threads)
         return uproot.open(file_name, *args, **kwargs)
 
     def raw_open(self, *args, **kwargs):
         return uproot.open(*args, **kwargs)
+
+    def set_entry_range(self, entry_start, entry_stop):
+        self._entry_start = entry_start
+        self._entry_stop = entry_stop
 
     def skip_dummy(self, p):
         if p.systematics is None:
@@ -589,10 +626,10 @@ class HistMaker(BaseAlgorithm):
                 for old_b, new_b in self.branch_rename.items()
             }
 
-        if self.sum_weight_tool:
+        if self.sum_weights_tool:
             branch_filter |= {
-                self.sum_weight_tool.dsid_branch,
-                self.sum_weight_tool.run_number_branch,
+                self.sum_weights_tool.dsid_branch,
+                self.sum_weights_tool.run_number_branch,
             } - {None, ""}
 
         if self.enable_systematics:
@@ -649,6 +686,18 @@ class HistMaker(BaseAlgorithm):
             if ttree is None or ttree.num_entries == 0:
                 return p.copy() if copy else p
 
+            # check entry range and total entries
+            total_tree_entries = ttree.num_entries
+            if self._entry_start is not None and self._entry_stop is not None:
+                entry_range = self._entry_stop - self._entry_start
+                total_entries = (
+                    min(entry_range, total_tree_entries)
+                    if entry_range > 0 and self._entry_start <= total_tree_entries
+                    else 0
+                )
+            else:
+                total_entries = total_tree_entries
+
             # setting the current systematics tag
             self.set_systematics_tag(p)
 
@@ -658,17 +707,14 @@ class HistMaker(BaseAlgorithm):
             # clear existing region weights tracker
             self._region_weight_tracker = {}
 
-            # setup sum weight tool state from process
-            self.sum_weight_tool.load_state_from_process(p)
+            # assign local variable to avoid dot lookup
+            sum_weights_tool = self.sum_weights_tool
 
-            # setup PMG xsec tool
+            # xsec tool for data and MC
             if p.is_data:
-                xsec_tool = self.xsec_tool  # default return 1
-            elif self.xsec_file:
-                logger.info(f"Initializing PMG xsec tool with {self.xsec_file}")
-                self.xsec_tool = PMGXsec(self.xsec_file)
-                # hard coded the dsid for now
-                xsec_tool = lambda event: self.xsec_tool(event["mcChannelNumber"])
+                xsec_tool = lambda x: 1.0
+            else:
+                xsec_tool = self.xsec_tool
 
             # check if external histogram looping is provided
             if histogram_method:
@@ -695,7 +741,7 @@ class HistMaker(BaseAlgorithm):
 
             with tqdm(
                 desc=f"Processing {p.name}|{p.systematics or 'nominal'} {has_corr}",
-                total=ttree.num_entries,
+                total=total_entries,
                 leave=False,
                 unit="events",
                 dynamic_ncols=True,
@@ -705,10 +751,10 @@ class HistMaker(BaseAlgorithm):
                     step_size=self.step_size,
                     filter_name=branch_filter,
                     report=True,
+                    entry_start=self._entry_start,
+                    entry_stop=self._entry_stop,
                     library="np",
                 ):
-                    self._entry_start = report.tree_entry_start
-                    self._entry_stop = report.tree_entry_stop
                     self._tree_ibatch += 1
                     nevent = report.tree_entry_stop - report.tree_entry_start
                     pbar_events.set_description(f"Processing {nevent} events")
@@ -753,7 +799,7 @@ class HistMaker(BaseAlgorithm):
 
                         # go to next iteration if no events passed both
                         # process and region level selection
-                        non_zero_count = parallel_nonzero_count(mask)
+                        non_zero_count = jit_parallel_nonzero_count(mask)
                         if non_zero_count == 0:
                             logger.debug("no event after region selection.")
                             continue
@@ -766,7 +812,7 @@ class HistMaker(BaseAlgorithm):
                         # MC only weights
                         if not p.is_data:
                             # multiply MC xsec and divide by sum weights
-                            weights *= xsec_tool(event) / self.sum_weight_tool(event)
+                            weights *= xsec_tool(event) / sum_weights_tool(event)
 
                         # combine region and process weights
                         r_weights = region_weights_parser(r, p_weights)
@@ -814,10 +860,14 @@ class HistMaker(BaseAlgorithm):
                         histogram_loop(r.histograms, mask, event, weights, sumW2)
 
                     if self.disable_pbar:
+                        if self._entry_start is not None:
+                            current_nevent = report.tree_entry_stop - self._entry_start
+                        else:
+                            current_nevent = report.tree_entry_stop
                         fstatus = ", ".join(
                             [
-                                f"{report.tree_entry_stop / ttree.num_entries*100.0:.2f}%",
-                                f"{ttree.num_entries} events",
+                                f"{current_nevent / total_entries*100.0:.2f}%",
+                                f"total events {total_entries}",
                                 f"dt={perf_counter()-t_start:.2f}s/file",
                                 self.fill_file_status or "",
                             ]
@@ -860,13 +910,15 @@ class HistMaker(BaseAlgorithm):
             pFilter = [pFilter]
         else:
             pFilter = set()
+        # start running algorithm for process
         for p in processes:
             if p.name in pFilter:
                 continue
             if self.skip_dummy(p):  # skip dummy if specified in skip_dummy_processes
                 continue
 
-            self.sum_weight_tool = SumWeightTool(self.sum_weights_file)
+            # load state from process
+            self.sum_weights_tool.load_state_from_process(p)
 
             psets_pbar.set_description(f"On process set: {p.name}")
             file_pbar = tqdm(

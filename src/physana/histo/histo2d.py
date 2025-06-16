@@ -3,7 +3,9 @@ import logging
 import numpy as np
 import scipy
 
-from . import jitfunc
+from .jitfunc import USE_JIT
+from .jitfunc import find_content_and_error_2d as jit_content_err_2d
+from .jitfunc import chuck_digitize_2d as jit_digitize_2d
 from .histo_base import HistogramBase, _hadd, _hsub, _hdiv, _hmul
 from .histo1d import Histogram
 from ..backends.root import from_th2, to_th2
@@ -356,7 +358,7 @@ class Histogram2D(HistogramBase):
         return self.get_bin_error(tuple(np.transpose(index)))
 
     def find_content_and_error(self, x, y):
-        return jitfunc.find_content_and_error_2d(
+        return jit_content_err_2d(
             x, y, self.bins[0], self.bins[1], self._bin_content, self._sumW2
         )
 
@@ -404,14 +406,17 @@ class Histogram2D(HistogramBase):
         parallel with chuncks
         """
         m_w = weight if weight is not None else np.ones(len(xdata))
-        return jitfunc.chuck_digitize_2d(
-            np.asarray(xdata, np.double),
-            np.asarray(ydata, np.double),
-            np.asarray(bins[0], np.double),
-            np.asarray(bins[1], np.double),
-            m_w,
-            w2,
-        )
+        if USE_JIT:
+            return jit_digitize_2d(
+                np.asarray(xdata, np.double),
+                np.asarray(ydata, np.double),
+                np.asarray(bins[0], np.double),
+                np.asarray(bins[1], np.double),
+                m_w,
+                w2,
+            )
+        else:
+            return Histogram2D._digitize(xdata, ydata, bins, m_w, w2)
 
     def from_array(self, xdata, ydata, w=None, w2=None, accumulate=True):
         xdata = np.asarray(xdata)

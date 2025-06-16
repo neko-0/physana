@@ -30,10 +30,9 @@ class SumWeightTool:
         return self.get_sum_weights(events)
 
     def load_state_from_process(self, process):
-        if process.is_data:
-            self.is_data = True
+        self.is_data = process.is_data
+        if self.is_data:
             return
-        self.is_data = False
         if process.systematics:
             self.syst = process.systematics.tag
         else:
@@ -77,7 +76,12 @@ class SumWeightTool:
 
     def get_sum_weights(self, events):
 
-        if self.is_data or not self.is_loaded:
+        if not self.is_loaded:
+            raise FileNotFoundError(
+                f"Sum weights file not loaded: {self.sum_weights_file}"
+            )
+
+        if self.is_data:
             return 1.0
 
         dsid = ne_eval(self.dsid_branch, events)
@@ -100,24 +104,28 @@ class SumWeightTool:
         )
 
     def get_sum_weight(self, dsid, run_number):
-        if self.is_data or not self.is_loaded:
+        if not self.is_loaded:
+            raise FileNotFoundError(
+                f"Sum weights file not loaded: {self.sum_weights_file}"
+            )
+        if self.is_data:
             return 1.0
         return self.sum_weights_dict[self.syst][(dsid, run_number)]
 
 
-def extract_cutbook_sum_weights(
-    config, output, dsid_branch="mcChannelNumber", run_number_branch="runNumber"
+def _extract_cutbook_sum_weights(
+    list_of_files,
+    output,
+    dsid_branch="mcChannelNumber",
+    run_number_branch="runNumber",
+    treename_match=None,
 ):
     sum_weights = {}
 
-    def ntuple_files():
-        for pset in config.process_sets:
-            for p in pset:
-                for file in p.input_files:
-                    yield file
-
-    for file in tqdm(ntuple_files()):
+    for file in tqdm(list_of_files):
         with uproot.open(file) as root_file:
+            if treename_match and treename_match not in root_file:
+                continue
             for obj_name in root_file.keys():
                 if "CutBookkeeper" not in obj_name:
                     continue
@@ -141,3 +149,13 @@ def extract_cutbook_sum_weights(
     sum_weight_tool.sum_weights_dict = sum_weights
 
     return sum_weight_tool.save(output)
+
+
+def extract_cutbook_sum_weights(config, *args, **kwargs):
+    def ntuple_files():
+        for pset in config.process_sets:
+            for p in pset:
+                for file in p.input_files:
+                    yield file
+
+    return _extract_cutbook_sum_weights(ntuple_files(), *args, **kwargs)

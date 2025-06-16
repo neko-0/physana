@@ -2,6 +2,9 @@ import numpy as np
 from numba import jit, prange
 
 
+USE_JIT = False
+
+
 @jit(nopython=True, cache=True, parallel=True)
 def apply_phsp_correction(w, sumW2, phsp, phsp_err):
     n = len(w)
@@ -196,13 +199,13 @@ def is_none_zero(data):
     return False
 
 
-@jit(nopython=True, cache=True, parallel=True, nogil=True)
+@jit(nopython=True, cache=True, nogil=True)
 def parallel_nonzero_count(data):
     """
     parallel should be safe here
     """
     flattened = data.ravel()
     sum_ = 0
-    for i in prange(flattened.size):
+    for i in range(flattened.size):
         sum_ += flattened[i] != 0
     return sum_

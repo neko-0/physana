@@ -32,6 +32,8 @@ def run_algorithm(
     input_config: str | ConfigMgr,
     algorithm: Optional[BaseAlgorithm] = None,
     forcefill: bool = False,
+    entry_start: int = None,
+    entry_stop: int = None,
     **process_kwargs: Dict[str, Any],
 ) -> ConfigMgr:
     """
@@ -61,11 +63,15 @@ def run_algorithm(
     if not forcefill and config.filled:
         logger.warning("config is already filled")
         return config
-    algorithm.initialize()
+    # need to run prepare config first, then load meta data
     algorithm.prepare(config)
     algorithm.meta_data_from_config(config)
+    # algorithm start
+    algorithm.initialize()
+    algorithm.set_entry_range(entry_start, entry_stop)
     algorithm.process(config, **process_kwargs)
     algorithm.finalise()
+    # set the config fill status
     config.filled = True
     return config
 
@@ -260,8 +266,8 @@ def _syst_process(
     logger.info(f"Filtering missing tree for {c_config.name}")
     filter_missing_ttree(c_config, use_mp=False)
     logger.info(f"start processing {c_config.name}")
-    hist_maker.initialize()
     hist_maker.meta_data_from_config(c_config)
+    hist_maker.initialize()
     hist_maker.process(c_config, ext_pweight=ext_pweight)
     hist_maker.finalise()
     c_config.corrections.clear_buffer()
@@ -545,8 +551,8 @@ def _run_HistMaker(config_mgr, ext_pweight, type=None, **process_kwargs):
         hist_maker = HistMaker()
     elif type == 'bootstrap':
         hist_maker = strategies.bootstrap.BootstrapHistMaker()
-    hist_maker.initialize()
     hist_maker.meta_data_from_config(config_mgr)
+    hist_maker.initialize()
     hist_maker.process(config_mgr, ext_pweight=ext_pweight, **process_kwargs)
     hist_maker.finalise()
 
@@ -602,8 +608,8 @@ def _process(configuration):
     if not config_mgr.prepared:
         config_mgr.prepare(use_mp=False)
 
-    hist_maker.initialize()
     hist_maker.meta_data_from_config(config_mgr)
+    hist_maker.initialize()
     hist_maker.process(config_mgr, ext_pweight=external_weight)
     hist_maker.finalise()
     config_mgr.corrections.clear_buffer()

@@ -1,14 +1,18 @@
 import sys
 import re
-import fnmatch
+from fnmatch import translate
 from functools import lru_cache
-
+from typing import Any, Set, Callable, List, Union, Optional
 import formulate
+
+if formulate.__version__ >= "1.0.0":
+    from formulate.AST import Symbol
+
 
 _all_slots_cache = {}
 
 
-def get_all_slots(obj):
+def get_all_slots(obj: Any) -> Set[str]:
     obj_class = type(obj)
     if obj_class not in _all_slots_cache:
         slots = set()
@@ -21,59 +25,75 @@ def get_all_slots(obj):
 
 
 class RecursionLimit:
-    __slot__ = ("old_limit", "limit")
+    __slots__ = ("old_limit", "limit")
 
-    def __init__(self, limit):
-        self.old_limit = sys.getrecursionlimit()
-        self.limit = limit
+    def __init__(self, limit: int) -> None:
+        self.old_limit: int = sys.getrecursionlimit()
+        self.limit: int = limit
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         sys.setrecursionlimit(self.limit)
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         sys.setrecursionlimit(self.old_limit)
 
 
 @lru_cache(maxsize=None)
-def from_root(expr, *, rlimit=1500):
+def from_root(expr: str, *, rlimit: int = 5000) -> "formulate.AST":
     try:
-        with RecursionLimit(rlimit):  # pyparsing can reach the limit for long expr
+        with RecursionLimit(rlimit):  # For long expression
             return formulate.from_root(expr)
-    except formulate.parser.ParsingException as _error:
-        raise Exception(f"unable to parse {expr} due to pyparsing") from _error
     except Exception as _error:
-        raise Exception(f"unable to parse {expr}") from _error
+        raise Exception(f"unable to parse root {expr}") from _error
 
 
 @lru_cache(maxsize=None)
-def from_numexpr(expr):
+def from_numexpr(expr: str, rlimit: int = 5000) -> "formulate.AST":
     try:
-        return formulate.from_numexpr(expr)
-    except formulate.parser.ParsingException as _error:
-        raise Exception(f"unable to parse {expr} due to pyparsing") from _error
+        with RecursionLimit(rlimit):
+            return formulate.from_numexpr(expr)
     except Exception as _error:
-        raise Exception(f"unable to parse {expr}") from _error
+        raise Exception(f"unable to parse numexpr {expr}") from _error
 
 
 @lru_cache(maxsize=None)
-def to_numexpr(expr):
+def to_numexpr(expr: str) -> str:
     if expr:
         return from_root(expr).to_numexpr()
     return expr
 
 
+# Temperary workaround for older version
+if formulate.__version__ < "1.0.0":
+    get_variables = lambda x: x.variables
+else:
+
+    def get_variables(expr: "formulate.AST") -> Set[str]:
+        variables_keeper = set()
+
+        def traverse(node):
+            if node is None:
+                return
+            if isinstance(node, Symbol):
+                variables_keeper.add(node.symbol)
+            if hasattr(node, "left"):
+                traverse(node.left)
+            if hasattr(node, "right"):
+                traverse(node.right)
+
+        traverse(expr)
+
+        return variables_keeper
+
+
 @lru_cache(maxsize=None)
-def _expr_var(expr):
+def get_expression_variables(
+    expr: str, parser: Callable[[str], Any] = from_root
+) -> Set[str]:
     """
-    converting ROOT expression into set of variables
+    Get variables from an expression
     """
-    for i in range(5):  # maximum attempt
-        try:
-            return set(formulate.from_auto(expr).variables)
-        except Exception as _err:
-            if i < 4:
-                continue
-            raise _err
+    return get_variables(parser(expr))
 
 
 class Filter:
@@ -96,57 +116,70 @@ class Filter:
 
     __slots__ = ['_pattern', '_key']
 
-    def __init__(self, values=None, key='full_name'):
+    def __init__(
+        self, values: Optional[List[str]] = None, key: str = 'full_name'
+    ) -> None:
         """
         Construct a Filter object.
 
         Args:
-            values (:obj:`list` of :obj:`str`): A list of values to filter out.
+            values: A list of values to filter out.
+            key: The attribute name to use for filtering.
 
         Returns:
-            filter (:class:`~physana.core.Filter`): The Filter instance.
+            None
         """
         values = values or []
         self._pattern = (
-            re.compile('|'.join(fnmatch.translate(value) for value in values))
+            re.compile('|'.join(translate(value) for value in values))
             if values
             else None
         )
         self._key = key
 
-    def match(self, value):
+    def match(self, value: str) -> Union[None, str, bool]:
         """
         Match the excluded values against the provided value.
 
         Args:
-            value (:obj:`str`): The value to check against the filtered values.
+            value (str): The value to check against the filtered values.
 
         Returns:
-            None or matched substring.
+            Union[None, str, bool]: The matched substring if a match is found,
+            False if no pattern is defined, or None if no match occurs.
         """
         return self._pattern.match(value) if self._pattern is not None else False
 
-    def accept(self, obj):
+    def accept(self, obj: object) -> bool:
         """
         Whether the provided object's key is allowed or not based on specified excluded values.
 
         Args:
-            obj (:obj:`object`): An object with Filter.key attribute.
+            obj (object): An object with Filter.key attribute.
 
         Returns:
-            Bool: ``True`` if the value is accepted or ``False`` if the value is not accepted.
+            bool: ``True`` if the value is accepted or ``False`` if the value is not accepted.
         """
-        if self._pattern is None:
+        if self._pattern is None:  # type: ignore
             return True
         try:
-            value = getattr(obj, self.key)
+            value = getattr(obj, self.key)  # type: ignore
             if value is None:
                 return False
         except AttributeError:
             raise ValueError(f'{obj} does not have a {self.key} attribute')
         return bool(self.match(value))
 
-    def filter(self, obj):
+    def filter(self, obj: object) -> bool:
+        """
+        Whether the provided object's key is excluded or not based on specified excluded values.
+
+        Args:
+            obj (object): An object with Filter.key attribute.
+
+        Returns:
+            bool: ``True`` if the value is excluded or ``False`` if the value is not excluded.
+        """
         return not self.accept(obj)
 
     @property
@@ -162,9 +195,16 @@ class Filter:
         return self._pattern
 
     @pattern.setter
-    def pattern(self, values):
+    def pattern(self, values: List[str]) -> None:
+        """
+        Set the pattern value of the Filter object.
+
+        Args:
+            values (List[str]): A list of string values to use as the pattern.
+
+        Raises:
+            TypeError: if the input is not a list.
+        """
         if not isinstance(values, list):
             raise TypeError(f"Invalid type {type(values)}")
-        self._pattern = re.compile(
-            '|'.join(fnmatch.translate(value) for value in values)
-        )
+        self._pattern = re.compile('|'.join(translate(value) for value in values))

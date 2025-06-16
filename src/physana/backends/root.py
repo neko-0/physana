@@ -23,6 +23,7 @@ logger.setLevel(logging.WARNING)
 class RootBackend:
     ATLAS_LABELS_STATUS = "Internal"
     SHOW_LUMI_LABEL = True
+    LUMI = None
 
     @staticmethod
     def apply_pad_margins(pad, mt=0, mr=0, mb=0, ml=0):
@@ -199,10 +200,12 @@ class RootBackend:
         RootBackend.make_text("ATLAS", x=x, y=y, font=73, size=30)
 
         # Status (e.g. "Preliminary")
+        status = status or RootBackend.ATLAS_LABELS_STATUS
         if status:
             RootBackend.make_text(status, x=x + 0.125, y=y, size=28)
 
         # Luminosity label
+        lumi = RootBackend.LUMI or lumi
         if RootBackend.SHOW_LUMI_LABEL:
             lumi_label = f"#sqrt{{s}} = {energy} TeV, {lumi} fb^{{-1}}"
         else:

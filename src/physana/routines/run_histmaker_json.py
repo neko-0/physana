@@ -6,7 +6,7 @@ import pathlib
 import logging
 import socket
 from functools import partial
-from typing import Union, Dict, List, Any, Callable
+from typing import Union, Dict, List, Any, Callable, Optional, Tuple
 from collections import defaultdict
 
 from tqdm import tqdm
@@ -14,12 +14,13 @@ from dask_jobqueue import HTCondorCluster
 from dask.distributed import Client, Future, LocalCluster
 from dask.distributed import as_completed as dask_as_completed
 
-from .dataset_group import get_ntuple_files
+from .dataset_group import get_ntuple_files, get_nfiles
 
 from ..configs.base import ConfigMgr
 from ..configs.dispatch_tools import split
 from ..configs.merge_tools import merge
-from ..algorithm import run_algorithm, extract_cutbook_sum_weights, HistMaker
+from ..algorithm import run_algorithm, HistMaker
+from ..tools import extract_cutbook_sum_weights
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -32,9 +33,18 @@ reset = "\033[0m"
 
 class JSONHistSetup:
     def __init__(self, json_path: str):
-        self._show_job_script = True
+        self._show_job_script: bool = True
+
+        self.weights: List[str] = []
+        self.selections: List[str] = []
+        self.define_selections: Dict[str, str] = {}
+        self.process_list: List[Dict[str, str]] = []
+        self.region_list: List[Dict[str, str]] = []
+        self.observable_list: List[Dict[str, str]] = []
+        self.observable2D_list: List[Dict[str, str]] = []
+
         with open(json_path) as f:
-            self.setting = json.load(f)
+            self.setting: dict = json.load(f)
 
     def initialize(self) -> None:
         self.parse_block_io()
@@ -87,12 +97,19 @@ class JSONHistSetup:
         CURRENT_ATTEMPT = 0
         MAX_ATTEMPTS = self.others["max_attempts"]
 
-        failed = job_dispatch(self)
+        use_single_job = self.others.get("single_job", False)
+        if use_single_job:
+            dispatch_tool = single_thread_job_dispatch
+        else:
+            dispatch_tool = job_dispatch
+
+        failed = dispatch_tool(self)
+
         if any(failed.values()):
             if CURRENT_ATTEMPT < MAX_ATTEMPTS:
                 CURRENT_ATTEMPT += 1
                 logger.warning(f"Attempt {CURRENT_ATTEMPT} failed. Retrying...")
-                failed = job_dispatch(self)
+                failed = dispatch_tool(self)
             else:
                 for name, job_failed in failed.items():
                     logger.warning(
@@ -103,7 +120,47 @@ class JSONHistSetup:
             logger.info(f"All attempts {green}succeeded{reset}. Exiting...")
 
 
-def fill_config(config_name: str, output_dir: str) -> Union[str, None]:
+def combine_json_setups(json_files: Union[str, List[str]]) -> 'JSONHistSetup':
+    """
+    Combine multiple JSONHistSetup objects from different JSON files.
+
+    Parameters
+    ----------
+    json_files : str or list of str
+        A path to JSON file that contains a list of paths to other JSON files.
+        Each of those files contains part of JSONHistSetup object.
+        Alternatively, a list of paths to JSON files can be provided directly.
+
+    Returns
+    -------
+    JSONHistSetup
+        A new JSONHistSetup object with the settings from all the input files.
+    """
+
+    if isinstance(json_files, str):
+        with open(json_files) as input_file:
+            file_paths = json.load(input_file)
+    elif isinstance(json_files, list):
+        file_paths = json_files
+    else:
+        raise ValueError(f"Files setting receives invalid type {type(json_files)}.")
+
+    setups = [JSONHistSetup(path) for path in file_paths]
+
+    combined = setups[0]
+    for setup in setups[1:]:
+        for group in ["InputOutput", "ConfigMgr", "Jobs", "Condor", "Others"]:
+            combined.setting[group] = {
+                **combined.setting.get(group, {}),
+                **setup.setting.get(group, {}),  # overwrite with new settings
+            }
+
+    return combined
+
+
+def fill_config(
+    config_name: str, output_dir: str, entry_range: Optional[Tuple[int, int]] = None
+) -> Union[str, None]:
     """
     Opens a configuration file, processes it using HistMaker, and saves the result.
 
@@ -138,16 +195,30 @@ def fill_config(config_name: str, output_dir: str) -> Union[str, None]:
             else:
                 ifile = None
 
-    output = f"{output_dir}/input_{pset.name}_{ifile}.pkl"
+    if entry_range:
+        start, end = entry_range
+    else:
+        start, end = None, None
+
+    # Setting up output file name.
+    output = f"{output_dir}/output_{pset.name}_{ifile}"
+    if start is None and end is None:
+        output += ".pkl"
+    else:
+        output += f"_{start}_{end}.pkl"
+
     if pathlib.Path(output).exists():
         return output
 
+    sub_config.disable_pbar = True
+
     histmaker = HistMaker(use_mmap=False)
-    histmaker.step_size = "32MB"
+    histmaker.use_threads = False
+    histmaker.step_size = "5MB"
     histmaker.nthread = 1
     histmaker.disable_pbar = True
-    sub_config.disable_pbar = True
-    run_algorithm(sub_config, histmaker)
+
+    run_algorithm(sub_config, histmaker, entry_start=start, entry_stop=end)
 
     return sub_config.save(output)
 
@@ -204,7 +275,11 @@ def generate_config(
     for process in json_config.process_list:
         process = process.copy()  # make a copy to avoid modifying the original
         name = process["name"]
-        process.setdefault("input_files", process_file_map[name])
+        max_files = process.pop("max_files", None)
+        input_files = process_file_map[name]
+        if max_files:
+            input_files = get_nfiles(name, input_files, max_files)
+        process.setdefault("input_files", input_files)
         process.setdefault("selection", process_selection)
         process.setdefault("treename", "reco")
         process.setdefault("weights", lumi)
@@ -230,7 +305,7 @@ def generate_config(
 
     setting.RAISE_TREENAME_ERROR = False
 
-    setting.xsec_file = "/cvmfs/atlas.cern.ch/repo/sw/database/GroupData/dev/PMGTools/PMGxsecDB_mc16.txt"
+    setting.xsec_file = json_config.others["xsec_file"]
 
     return setting
 
@@ -252,37 +327,125 @@ def preparing_jobs(
         A dictionary of prepared jobs.
     """
     jobs = json_config.jobs
-    # Check merged output
-    for output_name in list(jobs):
-        output_filename = pathlib.Path(f"{json_config.out_path}/{output_name}.pkl")
-        if output_filename.exists():
-            jobs.pop(output_name)
+    # Check if there is already a merged output
+    if json_config.others.get("check_output", True):
+        for output_name in list(jobs):
+            output_filename = pathlib.Path(f"{json_config.out_path}/{output_name}.pkl")
+            if output_filename.exists():
+                jobs.pop(output_name)
 
     prepared_jobs: Dict[str, List[Callable[[], Union[str, None]]]] = defaultdict(list)
     for name, job in jobs.items():
         setting = generate_config(json_config, job[0], job[1], job[2])
 
-        sum_weight_file = f"{json_config.out_path}/{name}_SumWeights.txt"
-        if pathlib.Path(sum_weight_file).exists():
-            setting.sum_weights_file = sum_weight_file
+        sum_weights_file = f"{json_config.out_path}/{name}_SumWeights.txt"
+        if pathlib.Path(sum_weights_file).exists():
+            setting.sum_weights_file = sum_weights_file
         else:
             setting.sum_weights_file = extract_cutbook_sum_weights(
-                setting, sum_weight_file
+                setting, sum_weights_file, treename_match=None
             )
 
-        split_config = split(setting, "ifile", batch_size=1)
+        enable_cache_split = json_config.others.get("cache_split", False)
+        enable_prepare = json_config.others.get("prepare", False)
 
-        logger.info(f"Starting preparing {name}")
+        cache_split_file = f"{json_config.out_path}/{name}_cache_split.json"
+        if not pathlib.Path(cache_split_file).exists():
+            enable_cache_split = False
 
-        for i, sub_config in tqdm(enumerate(split_config), leave=False):
-            config_name = f"{json_config.out_path}/input_{name}/{i}.pkl"
-            if not pathlib.Path(config_name).exists():
-                config_name = sub_config.save(config_name)
+        if enable_cache_split:
+            with open(cache_split_file) as f:
+                split_config = json.load(f)
+        else:
+            split_config = split(
+                setting,
+                "entries",
+                nbatch=json_config.others.get("nbatch", 5),
+                tree_name="reco",
+            )
+
+        logger.info(f"Start preparing {name}")
+
+        cache_split_keeper = []
+        for sub_config, start, end in tqdm(split_config, leave=False):
+            if not enable_cache_split:
+                # Make sure there is only one input file per process
+                for pset in sub_config.process_sets:
+                    for p in pset:
+                        assert len(p.input_files) <= 1
+                        if len(p.input_files) == 1:
+                            ifile = pathlib.Path(list(p.input_files)[0]).stem.strip(
+                                ".root"
+                            )
+                        else:
+                            ifile = None
+                        ifile = f"{pset.name}_{ifile}"
+
+                config_name = f"{json_config.out_path}/input_{name}/input_{ifile}_{start}_{end}.pkl"
+                if not pathlib.Path(config_name).exists():
+                    if json_config.others.get("prepare_prior_save", False):
+                        sub_config.prepare()
+                    config_name = sub_config.save(config_name)
+                cache_split_keeper.append([str(config_name), start, end])
+            else:
+                config_name = sub_config
+
+            if enable_prepare:
+                config_name = ConfigMgr.open(config_name)
+                config_name.prepare()
+
             prepared_jobs[name].append(
-                partial(fill_config, config_name, f"{json_config.out_path}/tmp_{name}/")
+                partial(
+                    fill_config,
+                    config_name,
+                    f"{json_config.out_path}/output_{name}/",
+                    (start, end),
+                )
             )
+
+        if not enable_cache_split:
+            with open(cache_split_file, "w") as f:
+                json.dump(cache_split_keeper, f)
 
     return prepared_jobs
+
+
+def single_thread_job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
+
+    prepared_jobs = preparing_jobs(json_config)
+
+    if not prepared_jobs:
+        logger.warning(f"{yellow} All jobs are merged {reset}")
+        return {x: False for x in prepared_jobs.keys()}
+
+    batch_size = json_config.others.get("file_batch_size", 3)
+
+    failed = {x: False for x in prepared_jobs}
+
+    results = defaultdict(list)
+    for name, job_list in prepared_jobs.items():
+        results_list = results[name]
+        for i in range(0, len(job_list), batch_size):
+            results_list += batch_runner(job_list[i : i + batch_size])
+
+    for name, result in results.items():
+        logger.info(f"{name} merging jobs: {len(result)}")
+        try:
+            config = merge((ConfigMgr.open(x) for x in results[name]))
+            config.save(f"{json_config.out_path}/{name}.pkl")
+            if json_config.others.get("cleanup_input", True):
+                shutil.rmtree(f"{json_config.out_path}/input_{name}")
+        except OSError:
+            for x in results[name]:
+                if x is None:
+                    continue
+                try:
+                    _ = ConfigMgr.open(x)
+                except OSError:
+                    os.unlink(x)
+            failed[name] = True
+
+    return failed
 
 
 def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
@@ -314,18 +477,18 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
     logger.info(f"Scaling jobs to {max_jobs}")
 
     if json_config.others["local"]:
-        cluster = LocalCluster()
-        cluster.scale(max_jobs)
+        cluster = LocalCluster(n_workers=max_jobs)
     else:
         cluster = json_config.setup_cluster()
         cluster.scale(jobs=max_jobs)
 
-    batch_size = 3
+    batch_size = json_config.others.get("file_batch_size", 3)
+    timeout = json_config.others.get("timeout", 60 * 5)
     failed = {x: False for x in prepared_jobs}
     futures: Dict[str, List[Future]] = defaultdict(list)
     results: Dict[str, List[Any]] = defaultdict(list)
 
-    with Client(cluster) as pool:
+    with cluster, Client(cluster) as pool:
         for name, job_list in prepared_jobs.items():
             futures_name_append = futures[name].append
             for i in range(0, len(job_list), batch_size):
@@ -340,14 +503,22 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
             finished_num_batch = 0
             while retry_count < max_retries:
                 try:
+                    result_fail = False
                     for i, future in enumerate(
-                        dask_as_completed(futures_list, timeout=60 * 5), start=1
+                        dask_as_completed(futures_list, timeout=timeout), start=1
                     ):
-                        results[name] += future.result()
+                        try:
+                            results[name] += future.result()
+                        except Exception:
+                            result_fail = True
+                            continue
                         if i >= finished_num_batch:
-                            logger.info(f"{name} completed batch {i}/{total_batches}")
+                            percent = round(100 * i / total_batches, 2)
+                            logger.info(
+                                f"{name} completed batch {i}/{total_batches}, {percent}%"
+                            )
                             finished_num_batch = i
-                    failed[name] = False
+                    failed[name] = result_fail
                     break
                 except TimeoutError:
                     logger.warning(f"{name} timed out. Retrying...")
@@ -364,15 +535,14 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
                     results[name] = []
                     break
 
-    cluster.close()
-
     if not any(failed.values()):
         for name, result in results.items():
             logger.info(f"{name} merging jobs: {len(result)}")
             try:
                 config = merge((ConfigMgr.open(x) for x in results[name]))
                 config.save(f"{json_config.out_path}/{name}.pkl")
-                shutil.rmtree(f"{json_config.out_path}/input_{name}")
+                if json_config.others.get("cleanup_input", True):
+                    shutil.rmtree(f"{json_config.out_path}/input_{name}")
             except OSError:
                 for x in results[name]:
                     if x is None:
