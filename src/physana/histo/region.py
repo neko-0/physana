@@ -26,6 +26,7 @@ class Region(AnalysisContainer):
         "effective_nevents",
         "sumW2",
         "branch_reserved",
+        "histo_branches",
     )
 
     def __init__(
@@ -46,6 +47,7 @@ class Region(AnalysisContainer):
         self.effective_nevents = 0  # effective number of event (with weights)
         self.sumW2 = 0
         self.branch_reserved = False
+        self.histo_branches = set()
 
     def __str__(self):
         space = " " * 3

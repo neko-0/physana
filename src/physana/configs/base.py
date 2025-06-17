@@ -630,7 +630,9 @@ class ConfigMgr:
                     logger.debug(f"{hist.name} rejected {r.full_name} due to full name")
                     continue
                 r.append(hist, enable_filter=True)
-                r.ntuple_branches |= self._histogram_branch_dict.get(hist.name, set())
+                histo_branches = self._histogram_branch_dict.get(hist.name, set())
+                r.ntuple_branches |= histo_branches
+                r.histo_branches |= histo_branches
             r.ntuple_branches |= self._region_branch_dict.get(r.name, set())
 
         # region weight checkfing dict
