@@ -129,6 +129,9 @@ def _extract_cutbook_sum_weights(
             for obj_name in root_file.keys():
                 if "CutBookkeeper" not in obj_name:
                     continue
+                # what is "CutBookkeeper_Updated"?
+                if "Updated" in obj_name:
+                    continue
 
                 _, dsid, run, syst = obj_name.split("_")
 
