@@ -159,7 +159,10 @@ def combine_json_setups(json_files: Union[str, List[str]]) -> 'JSONHistSetup':
 
 
 def fill_config(
-    config_name: str, output_dir: str, entry_range: Optional[Tuple[int, int]] = None
+    config_name: str,
+    output_dir: str,
+    entry_range: Optional[Tuple[int, int]] = None,
+    skip_hist: bool = False,
 ) -> Union[str, None]:
     """
     Opens a configuration file, processes it using HistMaker, and saves the result.
@@ -217,6 +220,7 @@ def fill_config(
     histmaker.step_size = "5MB"
     histmaker.nthread = 1
     histmaker.disable_pbar = True
+    histmaker.skip_hist = skip_hist
 
     run_algorithm(sub_config, histmaker, entry_start=start, entry_stop=end)
 
@@ -400,6 +404,7 @@ def preparing_jobs(
                     config_name,
                     f"{json_config.out_path}/output_{name}/",
                     (start, end),
+                    json_config.others.get("skip_hist", False),
                 )
             )
 
