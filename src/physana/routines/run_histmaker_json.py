@@ -8,6 +8,7 @@ import socket
 from functools import partial
 from typing import Union, Dict, List, Any, Callable, Optional, Tuple
 from collections import defaultdict
+from time import perf_counter
 
 from tqdm import tqdm
 from dask_jobqueue import HTCondorCluster
@@ -513,6 +514,7 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
                     pool.submit(batch_runner, job_list[i : i + batch_size])
                 )
 
+        start_t = perf_counter()
         for name, futures_list in futures.items():
             total_batches = len(futures_list)
             retry_count = 0
@@ -531,8 +533,10 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
                             continue
                         if i >= finished_num_batch:
                             percent = round(100 * i / total_batches, 2)
+                            dt = perf_counter() - start_t
+                            start_t = perf_counter()
                             logger.info(
-                                f"{name} completed batch {i}/{total_batches}, {percent}%"
+                                f"{name} completed batch {i}/{total_batches}, {percent}%, {dt=:.2f}s"
                             )
                             finished_num_batch = i
                     failed[name] = result_fail
