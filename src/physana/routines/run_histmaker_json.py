@@ -173,6 +173,10 @@ def fill_config(
         The path to the configuration file to be opened and processed.
     output_dir : str
         The directory where the processed configuration will be saved.
+    entry_range : Optional[Tuple[int, int]], optional
+        The range of entries to be processed, by default None.
+    skip_hist : bool, optional
+        Flag to determine whether to skip histogram generation, by default False.
 
     Returns
     -------
@@ -180,41 +184,47 @@ def fill_config(
         The path to the saved processed configuration, or None if an error occurs.
     """
     try:
+        # Attempt to open the configuration file
         sub_config = ConfigMgr.open(config_name)
     except OSError:
+        # If opening fails, attempt to remove the file and return None
         try:
             os.unlink(config_name)
         except Exception as _err:
             logger.warning(f"Unable to remove {config_name} due to {_err}")
         return None
 
+    # Ensure there is exactly one process set in the configuration
     assert len(sub_config.process_sets) == 1
 
     for pset in sub_config.process_sets:
         for p in pset:
+            # Ensure there is at most one input file for each process
             assert len(p.input_files) <= 1
             if len(p.input_files) == 1:
                 ifile = pathlib.Path(list(p.input_files)[0]).stem.strip(".root")
             else:
                 ifile = None
 
+    # Determine entry range
     if entry_range:
         start, end = entry_range
     else:
         start, end = None, None
 
-    # Setting up output file name.
+    # Set up output file name based on input parameters
     output = f"{output_dir}/output_{pset.name}_{ifile}"
     if start is None and end is None:
         output += ".pkl"
     else:
         output += f"_{start}_{end}.pkl"
 
+    # If output file already exists, return its path
     if pathlib.Path(output).exists():
         return output
 
+    # Configure HistMaker settings
     sub_config.disable_pbar = True
-
     histmaker = HistMaker(use_mmap=False)
     histmaker.use_threads = False
     histmaker.step_size = "5MB"
@@ -222,8 +232,10 @@ def fill_config(
     histmaker.disable_pbar = True
     histmaker.skip_hist = skip_hist
 
+    # Run the processing algorithm
     run_algorithm(sub_config, histmaker, entry_start=start, entry_stop=end)
 
+    # Save the processed configuration and return the output path
     return sub_config.save(output)
 
 
