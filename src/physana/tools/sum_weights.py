@@ -142,9 +142,9 @@ def _extract_cutbook_sum_weights(
 
                 lookup = (dsid, run)
                 if lookup not in sum_weights[syst]:
-                    sum_weights[syst][lookup] = 0.0
+                    sum_weights[syst][lookup] = np.double(0.0)
 
-                sum_weights[syst][lookup] += float(root_file[obj_name].values()[1])
+                sum_weights[syst][lookup] += np.double(root_file[obj_name].values()[1])
 
     sum_weight_tool = SumWeightTool()
     sum_weight_tool.dsid_branch = dsid_branch
