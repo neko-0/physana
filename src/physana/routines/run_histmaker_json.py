@@ -9,6 +9,7 @@ from functools import partial
 from typing import Union, Dict, List, Any, Callable, Optional, Tuple
 from collections import defaultdict
 from time import perf_counter
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 from dask_jobqueue import HTCondorCluster
@@ -240,21 +241,30 @@ def fill_config(
     return sub_config.save(output)
 
 
-def batch_runner(prepared_jobs_list: List[Callable[[], None]]) -> List[None]:
+def batch_runner(
+    prepared_jobs_list: List[Callable[[], None]], processes: int = 1
+) -> List[None]:
     """
-    Runs a list of jobs in batch.
+    Executes a list of jobs in batch, either sequentially or in parallel.
 
     Parameters
     ----------
     prepared_jobs_list : List[Callable[[], None]]
-        A list of jobs to be run in batch.
+        A list of callable jobs to be executed. Each job is expected to perform an action and return None.
+    processes : int, optional
+        The number of processes to use for parallel execution. Defaults to 1 (sequential execution).
 
     Returns
     -------
     List[None]
-        A list of the results of the jobs. Each job is expected to return None.
+        A list containing None for each job executed, as each job is expected to return None.
     """
-    return [job() for job in prepared_jobs_list]
+    if processes > 1:
+        with ProcessPoolExecutor(processes) as executor:
+            futures = [executor.submit(job) for job in prepared_jobs_list]
+            return [future.result() for future in as_completed(futures)]
+    else:
+        return [job() for job in prepared_jobs_list]
 
 
 def generate_config(
@@ -440,11 +450,14 @@ def single_thread_job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
 
     failed = {x: False for x in prepared_jobs}
 
+    # number of multiple processes for batch running
+    batch_processes = json_config.others.get("batch_processes", 1)
+
     results = defaultdict(list)
     for name, job_list in prepared_jobs.items():
         results_list = results[name]
         for i in range(0, len(job_list), batch_size):
-            results_list += batch_runner(job_list[i : i + batch_size])
+            results_list += batch_runner(job_list[i : i + batch_size], batch_processes)
 
     for name, result in results.items():
         logger.info(f"{name} merging jobs: {len(result)}")
@@ -500,6 +513,9 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
         cluster = json_config.setup_cluster()
         cluster.scale(jobs=max_jobs)
 
+    # number of multiple processes for batch running
+    batch_processes = json_config.others.get("batch_processes", 1)
+
     batch_size = json_config.others.get("file_batch_size", 3)
     timeout = json_config.others.get("timeout", 60 * 5)
     failed = {x: False for x in prepared_jobs}
@@ -511,7 +527,9 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
             futures_name_append = futures[name].append
             for i in range(0, len(job_list), batch_size):
                 futures_name_append(
-                    pool.submit(batch_runner, job_list[i : i + batch_size])
+                    pool.submit(
+                        batch_runner, job_list[i : i + batch_size], batch_processes
+                    )
                 )
 
         start_t = perf_counter()
