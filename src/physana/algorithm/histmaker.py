@@ -192,6 +192,7 @@ class HistMaker(BaseAlgorithm):
         self.skip_dummy_processes: Optional[List[str]] = None
 
         # variables for multi-thread/process histogram filling.
+        self.skip_hist: bool = False  # skip histogram filling
         self.hist_fill_type: Optional[str] = None
         self.hist_fill_executor: Optional[ThreadPoolExecutor] = None
 
@@ -455,17 +456,18 @@ class HistMaker(BaseAlgorithm):
         default loop for list of histograms
         User external histogram loop should use the same expect input arguments
         """
+        replace_syst_tag = self.replace_syst_tag
         for hist in histograms:
             # check if there's specified weights in the histogram
             # overwrite the weights defined in process/region/default
             if hist.weights:
-                weights_str = self.replace_syst_tag(hist.weights)
+                weights_str = replace_syst_tag(hist.weights)
                 hist_w = ne_evaluate(weights_str, event)[mask]
             else:
                 obs = hist.observable
                 hist_w = weights[mask]
 
-            obs = (self.replace_syst_tag(x) for x in hist.observable)
+            obs = (replace_syst_tag(x) for x in hist.observable)
 
             fdata = histogram_eval(event, mask, *obs)
             hist.from_array(*fdata, hist_w, sumW2[mask] if self.err_prop else None)
@@ -617,6 +619,8 @@ class HistMaker(BaseAlgorithm):
         branch_filter = process.ntuple_branches
         for r in process:
             branch_filter |= r.ntuple_branches
+            if self.skip_hist:  # skip hist branches
+                branch_filter -= r.histo_branches
 
         # if branch renaming is requested, we need to make sure the original
         # names are used for branch filtering.
@@ -857,8 +861,13 @@ class HistMaker(BaseAlgorithm):
                         else:
                             r.sumW2 += np.sum((weights**2)[mask])
 
+                        # option to skip histogram loop
+                        if self.skip_hist:
+                            continue
+
                         histogram_loop(r.histograms, mask, event, weights, sumW2)
 
+                    # update and display the progress staus.
                     if self.disable_pbar:
                         if self._entry_start is not None:
                             current_nevent = report.tree_entry_stop - self._entry_start
