@@ -620,7 +620,7 @@ class HistMaker(BaseAlgorithm):
         for r in process:
             branch_filter |= r.ntuple_branches
             if self.skip_hist:  # skip hist branches
-                branch_filter -= r.histo_branches
+                branch_filter -= r.histo_branches - branch_filter
 
         # if branch renaming is requested, we need to make sure the original
         # names are used for branch filtering.
