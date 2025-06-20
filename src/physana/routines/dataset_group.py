@@ -5,6 +5,10 @@ TypeDSIDList = Union[List[int], List[str]]
 
 DSID_MAP: Dict[str, TypeDSIDList] = {
     "data": ["periodAllYear"],
+    "data_2015": ["grp15"],
+    "data_2016": ["grp16"],
+    "data_2017": ["grp17"],
+    "data_2018": ["grp18"],
     "zjets_strong": list(range(700320, 700326)) + list(range(700335, 700338)),
     "zjets_strong_fxfx": list(range(506193, 506199)),
     "zjets_strong_fxfx_tau": list(range(512198, 512201)),
