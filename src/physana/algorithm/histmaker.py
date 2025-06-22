@@ -219,8 +219,12 @@ class HistMaker(BaseAlgorithm):
         self._selection_tracker: Dict[str, Dict[str, Any]] = defaultdict(dict)
 
         # file processing variables and threads
+        self.use_raw_open: bool = False
+        self.open_file_kwargs: Dict[str, Any] = {}
         self.use_threads: bool = True
         self.file_nthreads: Optional[int] = None
+        self.create_decompression_executor: bool = True
+        self.create_interpretation_executor: bool = True
         self.f_decompression_executor: Optional[ThreadPoolExecutor] = None
         self.f_interpretation_executor: Optional[ThreadPoolExecutor] = None
         if mp.current_process().name != "MainProcess" and disable_child_thread:
@@ -304,32 +308,33 @@ class HistMaker(BaseAlgorithm):
     def open_file(self, file_name, use_mmap=False, *args, **kwargs):
         self.initialize()
         # note: executor attached to file will be shutdown automatically
-        if self.f_decompression_executor is None:
-            if self.nthread > 1:
-                self.f_decompression_executor = ThreadPoolExecutor(self.nthread)
-            else:
-                self.f_decompression_executor = uproot.TrivialExecutor()
-        if self.f_interpretation_executor is None:
-            self.f_interpretation_executor = uproot.TrivialExecutor()
-        kwargs.setdefault("decompression_executor", self.f_decompression_executor)
-        kwargs.setdefault("interpretation_executor", self.f_interpretation_executor)
+        if self.create_decompression_executor:
+            if self.f_decompression_executor is None:
+                if self.nthread > 1:
+                    self.f_decompression_executor = uproot.ThreadPoolExecutor(
+                        self.nthread
+                    )
+                else:
+                    self.f_decompression_executor = uproot.TrivialExecutor()
+            kwargs.setdefault("decompression_executor", self.f_decompression_executor)
+        if self.create_interpretation_executor:
+            if self.f_interpretation_executor is None:
+                self.f_interpretation_executor = uproot.TrivialExecutor()
+            kwargs.setdefault("interpretation_executor", self.f_interpretation_executor)
         opts = {}
         # kwargs.setdefault("array_cache", None)
         # kwargs.setdefault("object_cache", None)
-        # opts.update({"num_fallback_workers": self.nthread})
-        opts.update({"num_workers": self.nthread})
-        if "xrootd_handler" not in kwargs:
-            opts.update({"xrootd_handler": uproot.MultithreadedXRootDSource})
+        # if "xrootd_handler" not in kwargs:
+        #     opts.update({"xrootd_handler": uproot.MultithreadedXRootDSource})
         if use_mmap or self.use_mmap:
             kwargs.setdefault("handler", uproot.MemmapSource)
-            kwargs.update(opts)
+            opts.update({"num_workers": self.nthread})
+            opts.update({"num_fallback_workers": self.nthread})
         else:
             kwargs.setdefault("handler", uproot.MultithreadedFileSource)
-            # kwargs.setdefault("num_workers", 2)
-            # kwargs.setdefault("executor", self.f_decompression_executor)
-            kwargs.update(opts)
-        if not self.use_threads:
-            kwargs.setdefault("use_threads", self.use_threads)
+            opts.update({"num_workers": self.nthread})
+            opts.update({"use_threads": self.use_threads})
+        kwargs.update(opts)
         return uproot.open(file_name, *args, **kwargs)
 
     def raw_open(self, *args, **kwargs):
@@ -580,11 +585,11 @@ class HistMaker(BaseAlgorithm):
             if proc_sel:
                 p_r_selection.append(f"({proc_sel})")
             if region.selection:
-                p_r_selection.append(region.selection)
+                p_r_selection.append(f"({region.selection})")
 
             # combinding process and region level selections
             if p_r_selection:
-                selection_str = "&".join(p_r_selection)
+                selection_str = " & ".join(p_r_selection)
                 selection_str = selection_str.replace("()", "")
                 selection_str = selection_str.strip().strip("&")
             else:
@@ -630,7 +635,7 @@ class HistMaker(BaseAlgorithm):
                 for old_b, new_b in self.branch_rename.items()
             }
 
-        if self.sum_weights_tool:
+        if not process.is_data and self.sum_weights_tool:
             branch_filter |= {
                 self.sum_weights_tool.dsid_branch,
                 self.sum_weights_tool.run_number_branch,
@@ -678,12 +683,14 @@ class HistMaker(BaseAlgorithm):
         process_weights_parser = self.process_weights_parser
         region_weights_parser = self.region_weights_parser
 
-        open_file = self.open_file
-        # open_file = uproot.open
+        if self.use_raw_open:
+            open_file = uproot.open
+        else:
+            open_file = self.open_file
 
         t_start = perf_counter()
 
-        with open_file(file_name) as tfile:
+        with open_file(file_name, **self.open_file_kwargs) as tfile:
             ttree = self.resolve_ttree(tfile, p)
 
             # check ttree and number of entry. return early if it's zero
@@ -735,6 +742,7 @@ class HistMaker(BaseAlgorithm):
 
             # check for filtered branches
             branch_filter = reserved_branches or self.select_branches(p)
+            nbranches = len(branch_filter)
 
             logger.debug(f"Number of branches reserved: {len(branch_filter)}")
             logger.debug(f"Branches reserved: {branch_filter}")
@@ -742,6 +750,9 @@ class HistMaker(BaseAlgorithm):
             logger.debug(f"retrieved {ttree.name}")
             logger.debug(f"opened {file_name}")
             has_corr = "with correction" if self.corrections else ""
+
+            # track time for reading ttree
+            read_time = perf_counter()
 
             with tqdm(
                 desc=f"Processing {p.name}|{p.systematics or 'nominal'} {has_corr}",
@@ -762,6 +773,9 @@ class HistMaker(BaseAlgorithm):
                     self._tree_ibatch += 1
                     nevent = report.tree_entry_stop - report.tree_entry_start
                     pbar_events.set_description(f"Processing {nevent} events")
+
+                    # calculate ttree read time
+                    dt_read_time = perf_counter() - read_time
 
                     # renaming the branches
                     if self.branch_rename:
@@ -828,7 +842,7 @@ class HistMaker(BaseAlgorithm):
 
                         # get the pure event count without any region selection.
                         # bascially this is the number of events after process selection
-                        r.total_nevents += np.sum(weights[all_mask])
+                        r.total_nevents += np.sum(weights[all_mask], dtype=np.double)
 
                         # Apply a phase-space correction factor to a given process
                         phsp, phsp_err = phsp_lookup(
@@ -855,11 +869,11 @@ class HistMaker(BaseAlgorithm):
                             continue
 
                         r.filled_nevents += non_zero_count
-                        r.effective_nevents += np.sum(weights[mask])
+                        r.effective_nevents += np.sum(weights[mask], dtype=np.double)
                         if self.err_prop:
-                            r.sumW2 += np.sum(sumW2[mask])
+                            r.sumW2 += np.sum(sumW2[mask], dtype=np.double)
                         else:
-                            r.sumW2 += np.sum((weights**2)[mask])
+                            r.sumW2 += np.sum((weights**2)[mask], dtype=np.double)
 
                         # option to skip histogram loop
                         if self.skip_hist:
@@ -877,6 +891,8 @@ class HistMaker(BaseAlgorithm):
                             [
                                 f"{current_nevent / total_entries*100.0:.2f}%",
                                 f"total events {total_entries}",
+                                f"{nbranches=}",
+                                f"tree dt = {dt_read_time:.2f}s",
                                 f"dt={perf_counter()-t_start:.2f}s/file",
                                 self.fill_file_status or "",
                             ]
@@ -891,6 +907,9 @@ class HistMaker(BaseAlgorithm):
                         t_start = perf_counter()
                     else:
                         pbar_events.update(nevent)
+
+                    # reset tree read time
+                    read_time = perf_counter()
 
         return p.copy() if copy else p
 
