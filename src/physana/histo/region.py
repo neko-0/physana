@@ -93,25 +93,28 @@ class Region(AnalysisContainer):
         c_self.div(rhs)
         return c_self
 
-    def nevents_add(self, rhs):
-        self.total_nevents += rhs
-        self.filled_nevents += rhs
-        self.effective_nevents += rhs
+    def get_counts(self):
+        return self.total_nevents, self.filled_nevents, self.effective_nevents
 
-    def nevents_sub(self, rhs):
-        self.total_nevents -= rhs
-        self.filled_nevents -= rhs
-        self.effective_nevents -= rhs
+    def nevents_add(self, rhs_total, rhs_filled, rhs_effective):
+        self.total_nevents += rhs_total
+        self.filled_nevents += rhs_filled
+        self.effective_nevents += rhs_effective
 
-    def nevents_mul(self, rhs):
-        self.total_nevents *= rhs
-        self.filled_nevents *= rhs
-        self.effective_nevents *= rhs
+    def nevents_sub(self, rhs_total, rhs_filled, rhs_effective):
+        self.total_nevents -= rhs_total
+        self.filled_nevents -= rhs_filled
+        self.effective_nevents -= rhs_effective
 
-    def nevents_div(self, rhs):
-        self.filled_nevents /= rhs
-        self.total_nevents /= rhs
-        self.effective_nevents /= rhs
+    def nevents_mul(self, rhs_total, rhs_filled, rhs_effective):
+        self.total_nevents *= rhs_total
+        self.filled_nevents *= rhs_filled
+        self.effective_nevents *= rhs_effective
+
+    def nevents_div(self, rhs_total, rhs_filled, rhs_effective):
+        self.total_nevents /= rhs_total
+        self.filled_nevents /= rhs_filled
+        self.effective_nevents /= rhs_effective
 
     def _name_operation(self, rhs, op):
         if self.name != rhs.name:
@@ -125,14 +128,14 @@ class Region(AnalysisContainer):
     def _apply_operation(self, rhs, operation):
         """Apply a mathematical operation to this object and another object."""
         if isinstance(rhs, (int, float, np.floating)):
-            getattr(self, f"nevents_{operation}")(rhs)
+            getattr(self, f"nevents_{operation}")(rhs, rhs, rhs)
             for histogram in self:
                 getattr(histogram, operation)(rhs)
         elif not isinstance(rhs, self.__class__):
             raise TypeError(f"Invalid {operation=} with {type(rhs)=}")
         else:
             self._name_operation(rhs, operation)
-            getattr(self, f"nevents_{operation}")(rhs.effective_nevents)
+            getattr(self, f"nevents_{operation}")(*rhs.get_counts())
             for key, value in rhs._data.items():
                 if key in self._data:
                     getattr(self._data[key], operation)(value)
