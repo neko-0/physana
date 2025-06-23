@@ -156,9 +156,8 @@ def _extract_cutbook_sum_weights(
 
 def extract_cutbook_sum_weights(config, *args, **kwargs):
     def ntuple_files():
-        for pset in config.process_sets:
-            for p in pset:
-                for file in p.input_files:
-                    yield file
+        return set(
+            file for pset in config.process_sets for p in pset for file in p.input_files
+        )
 
     return _extract_cutbook_sum_weights(ntuple_files(), *args, **kwargs)
