@@ -42,10 +42,13 @@ class Region(AnalysisContainer):
         self.hist_type_filter = Filter(filter_hist_types, key='dtype')
         self.full_selection = None
         self.correction_type = correction_type
-        self.total_nevents = 0  # number of weighted event before selection.
-        self.filled_nevents = 0  # pure number event filled into this region
-        self.effective_nevents = 0  # effective number of event (with weights)
-        self.sumW2 = 0
+        # number of weighted event before selection.
+        self.total_nevents = np.double(0.0)
+        # pure number event filled into this region
+        self.filled_nevents = 0
+        # effective number of event (with weights)
+        self.effective_nevents = np.double(0.0)
+        self.sumW2 = np.double(0.0)
         self.branch_reserved = False
         self.histo_branches = set()
 
@@ -176,9 +179,9 @@ class Region(AnalysisContainer):
             self.filled_nevents /= rhs_fille_nevents
             self.effective_nevents /= rhs_effective_nevents
         except ZeroDivisionError:
-            self.total_nevents = 0
+            self.total_nevents = np.double(0.0)
             self.filled_nevents = 0
-            self.effective_nevents = 0
+            self.effective_nevents = np.double(0.0)
 
     @property
     def histograms(self):
@@ -259,10 +262,10 @@ class Region(AnalysisContainer):
         super().clear()
 
     def clear_content(self):
-        self.total_nevents = 0
+        self.total_nevents = np.double(0.0)
         self.filled_nevents = 0
-        self.effective_nevents = 0
-        self.sumW2 = 0
+        self.effective_nevents = np.double(0.0)
+        self.sumW2 = np.double(0.0)
         for hist in self.histograms:
             hist.clear_content()
 
