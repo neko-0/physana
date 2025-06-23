@@ -375,7 +375,18 @@ def slac_lsf(file, runtime, ncore, dir):
 # =============================================================================
 @cli.command()
 @click.option("--files", type=str, help="list of files to be checked")
-def check_data(files):
+@click.option("--match-info", type=str, default=None, help="matching configurate.")
+def check_data(files, match_info):
     list_of_files = glob(files)
     logger.info("Checking data completeness for: \n" + "\n".join(list_of_files))
-    tools.check_data_completeness(tqdm(list_of_files, leave=False))
+    if match_info:
+        metadata_type, lookup, nfiles, nevents = match_info.split(",")
+        nfiles = int(nfiles)
+        nevents = int(nevents)
+        data_year = {lookup: (nfiles, nevents)}
+    else:
+        metadata_type = "campaign"
+        data_year = None
+    tools.check_data_completeness(
+        tqdm(list_of_files, leave=False), metadata_type, data_year
+    )
