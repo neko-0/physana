@@ -873,7 +873,7 @@ class HistMaker(BaseAlgorithm):
                         if self.err_prop:
                             r.sumW2 += np.sum(sumW2[mask], dtype=np.double)
                         else:
-                            r.sumW2 += np.sum((weights**2)[mask], dtype=np.double)
+                            r.sumW2 += np.sum(weights[mask] ** 2, dtype=np.double)
 
                         # option to skip histogram loop
                         if self.skip_hist:
