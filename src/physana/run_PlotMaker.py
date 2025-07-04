@@ -693,9 +693,12 @@ def plot_ratio(
     yrange=None,
     low_yrange=None,
     logy=True,
+    logx=False,
+    low_ytitle="ratios",
     text=None,
     label_txt=None,
     show_text=False,
+    legend_pos=None,
 ):
     my_config = ConfigMgr.open(config)
     my_plotMaker = PlotMaker(my_config, output)
@@ -737,7 +740,9 @@ def plot_ratio(
             else:
                 m_yrange = yrange
 
-            legend = my_plotMaker.make_legend(0.45, 0.65, 0.65, 0.90)
+            if legend_pos is None:
+                legend_pos = (0.45, 0.55, 0.65, 0.85)
+            legend = my_plotMaker.make_legend(*legend_pos)
 
             try:
                 base = base_process.get(region_name).get(obs)
@@ -747,10 +752,12 @@ def plot_ratio(
                 base = base.root
                 base.SetLineWidth(2)
                 base.SetLineColor(ROOT.kBlack)
-            except:
+            except Exception as _err:
+                logger.warning(f"{region_name}/{obs} caught {_err}")
                 continue
 
             base_plot_job = PlotJob(f"base:{base_process.title}", base, "hpE")
+            base_plot_job.legend_style = "F"
             my_plotMaker.update_legend(legend, "int", base_plot_job)
 
             color = 2
@@ -776,6 +783,7 @@ def plot_ratio(
                 comp_hist.SetFillStyle(3001 + color)
                 color += 1
                 _plot_job = PlotJob(title, comp_hist, "hpE")
+                _plot_job.legend_style = "F"
                 my_plotMaker.update_legend(legend, "int", _plot_job)
                 comp_plot_job.append(_plot_job)
 
@@ -785,12 +793,13 @@ def plot_ratio(
                     obs,
                     base_plot_job,
                     comp_plot_job,
-                    "ratios",
+                    low_ytitle,
                     legend=legend,
                     xrange=m_xrange,
                     yrange=m_yrange,
                     low_yrange=low_yrange,
                     logy=logy,
+                    logx=logx,
                     text=text,
                     show_text=show_text,
                     label_txt=label_txt,

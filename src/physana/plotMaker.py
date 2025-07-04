@@ -719,6 +719,7 @@ class PlotMaker(object):
         oname,
         *,
         logy=False,
+        logx=False,
         figfmt="png,pdf",
         text=None,
         show_text=False,
@@ -730,6 +731,8 @@ class PlotMaker(object):
 
         if logy:
             canvas.SetLogy()
+        if logx:
+            canvas.SetLogx()
 
         canvas.cd()
 
@@ -744,12 +747,16 @@ class PlotMaker(object):
             text_x, text_y = 0.52, 0.57
             if text:
                 for t in text:
-                    if len(t) > 36:
-                        t = self._splitline("".join(t[:28]), "".join(t[28:]))
-                    self.make_text(t, text_x, text_y, 1)
-                    text_y -= 0.04
+                    if isinstance(t, dict):
+                        self.make_text(**t)
+                    else:
+                        if len(t) > 36:
+                            t = self._splitline("".join(t[:28]), "".join(t[28:]))
+                        self.make_text(t, text_x, text_y, 1)
+                        text_y -= 0.04
 
-        self.make_atlas_label(label_txt)
+        label_pos = {"x": 0.185, "y": 0.87}
+        RootBackend.make_atlas_label(label_txt, **label_pos)
 
         figfmt = figfmt.replace(" ", "")
         for pic_format in figfmt.split(","):
@@ -940,6 +947,7 @@ class PlotMaker(object):
         *,
         xrange=None,  # tupele(xmin,xmax)
         yrange=None,  # tupele(ymin,ymax)
+        logx=False,
         logy=False,
         low_yrange=None,
         ndiv=10,
@@ -1020,6 +1028,9 @@ class PlotMaker(object):
         if logy:
             logger.debug("setting y to log scale")
             ratio.GetUpperPad().SetLogy()
+        if logx:
+            logger.debug("setting x to log scale")
+            ratio.GetUpperPad().SetLogx()
 
         ratio.GetLowerPad().cd()
         for _ratio in ratio_list[1:]:
@@ -1030,6 +1041,16 @@ class PlotMaker(object):
         for _comp in comp_plot_job[1:]:
             _comp.histogram.Draw("h same")
             ratio.GetUpperPad().Update()
+
+        # unit line for ratio
+        _histo_xmin = ratio.GetXaxis().GetXmin()
+        _histo_xmax = ratio.GetXaxis().GetXmax()
+        ratio.GetLowerPad().cd()
+        hline = RootBackend.make_line(_histo_xmin, 1, _histo_xmax, 1)
+        ratio.GetUpperRefXaxis().SetRangeUser(_histo_xmin, _histo_xmax)
+        ratio.GetLowerRefXaxis().SetRangeUser(_histo_xmin, _histo_xmax)
+        hline.Draw()
+        canvas.cd()
 
         self._root_save_canvas(
             canvas,
