@@ -32,6 +32,7 @@ def _hdiv(lcontent, lsumW2, rcontent, rsumW2):
 class HistogramBase(BaseAnalysisContainer):
     __slots__ = (
         "dtype",
+        "np_dtype",
         "filter",
         "weights",
         "parent",
@@ -40,10 +41,11 @@ class HistogramBase(BaseAnalysisContainer):
         "_store_data",
     )
 
-    def __init__(self, name, dtype=None, filter_paths=None):
+    def __init__(self, name, dtype=None, filter_paths=None, np_dtype=None):
         super().__init__(name)
         self.name = name
         self.dtype = dtype
+        self.np_dtype = np_dtype
         self.filter = Filter(filter_paths)
         self.weights = None  # string expression to be evaluated for weights
         self.parent = None

@@ -44,8 +44,9 @@ class Histogram(HistogramBase):
         observable: str = None,
         dtype: str = None,
         filter_paths: list = None,
+        np_dtype: np.dtype = np.double,
     ) -> None:
-        super().__init__(name, dtype, filter_paths=filter_paths)
+        super().__init__(name, dtype, filter_paths=filter_paths, np_dtype=np_dtype)
         self.nbin: int = nbin
         self.xmin: float = xmin
         self.xmax: float = xmax
@@ -58,8 +59,8 @@ class Histogram(HistogramBase):
         # if observable is not specify, the name will be used as default.
         self._observable: str = observable
 
-        self._bin_content: np.ndarray = np.zeros(len(self.bins) + 1, dtype=np.single)
-        self._sumW2: np.ndarray = np.zeros(len(self.bins) + 1, dtype=np.single)
+        self._bin_content: np.ndarray = np.zeros(len(self.bins) + 1, dtype=np_dtype)
+        self._sumW2: np.ndarray = np.zeros(len(self.bins) + 1, dtype=np_dtype)
 
         # storage for systematics bands in nominal histogram
         self._systematics_band: dict = {} if self.systematics else None
@@ -72,7 +73,7 @@ class Histogram(HistogramBase):
         cls, name: str, bins: np.ndarray, xtitle: str, *args, **kwargs
     ) -> "Histogram":
         _obj = cls(name, len(bins) - 1, bins[0], bins[-1], xtitle, *args, **kwargs)
-        _obj.bins = np.array(bins, dtype=np.single)
+        _obj.bins = np.array(bins, _obj.np_dtype)
         return _obj
 
     @classmethod
@@ -151,8 +152,8 @@ class Histogram(HistogramBase):
             if all(m_bins == rhs):
                 return
         self._bins, m_size = rhs, len(rhs)
-        self._bin_content = np.zeros(m_size + 1, dtype=np.single)
-        self._sumW2 = np.zeros(m_size + 1, dtype=np.single)
+        self._bin_content = np.zeros(m_size + 1, dtype=self.np_dtype)
+        self._sumW2 = np.zeros(m_size + 1, dtype=self.np_dtype)
 
     @property
     def bin_width(self) -> np.ndarray:
@@ -251,7 +252,7 @@ class Histogram(HistogramBase):
                 self._data_array = []
             self._data_array += rhs._data_array
         elif isinstance(rhs, (int, float, np.floating)):
-            self._bin_content += np.single(rhs)
+            self._bin_content += self.np_dtype(rhs)
         else:
             raise TypeError(f"Invalid type {type(rhs)}")
 
@@ -261,7 +262,7 @@ class Histogram(HistogramBase):
             # self._sumW2 += rhs._sumW2
             _hsub(self._bin_content, self._sumW2, rhs._bin_content, rhs._sumW2)
         elif isinstance(rhs, (int, float, np.floating)):
-            self._bin_content -= np.single(rhs)
+            self._bin_content -= self.np_dtype(rhs)
         else:
             raise TypeError(f"Invalid type {type(rhs)}")
 
@@ -270,8 +271,8 @@ class Histogram(HistogramBase):
             _hmul(self._bin_content, self._sumW2, rhs._bin_content, rhs._sumW2)
         elif isinstance(rhs, (int, float, np.floating)):
             # self._sumW2 = self._sumW2 * rhs ** 2
-            self._sumW2 *= np.single(rhs) ** 2
-            self._bin_content *= np.single(rhs)
+            self._sumW2 *= self.np_dtype(rhs) ** 2
+            self._bin_content *= self.np_dtype(rhs)
         else:
             raise TypeError(f"Invalid type {type(rhs)}")
 

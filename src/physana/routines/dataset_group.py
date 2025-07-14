@@ -5,9 +5,14 @@ TypeDSIDList = Union[List[int], List[str]]
 
 DSID_MAP: Dict[str, TypeDSIDList] = {
     "data": ["periodAllYear"],
+    "data_2015": ["grp15"],
+    "data_2016": ["grp16"],
+    "data_2017": ["grp17"],
+    "data_2018": ["grp18"],
     "zjets_strong": list(range(700320, 700326)) + list(range(700335, 700338)),
     "zjets_strong_fxfx": list(range(506193, 506199)),
     "zjets_strong_fxfx_tau": list(range(512198, 512201)),
+    "zjets_strong_powheg": list(range(361106, 361108)),
     "zjets_EW": list(range(700358, 700362)),
     "wjets_strong": list(range(700338, 700350)),
     "wjets_EW": list(range(700362, 700365)),
@@ -16,6 +21,7 @@ DSID_MAP: Dict[str, TypeDSIDList] = {
     "singletop_st": [410644, 410645, 410658, 410659, 600027, 600028],
     "diboson_strong": list(range(700600, 700606)),
     "diboson_EW": list(range(700587, 700595)),
+    "vgamma": list(range(700398, 700405)),
 }
 
 MC_CAMPAIGN: Dict[str, Set[str]] = {

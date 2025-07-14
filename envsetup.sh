@@ -19,8 +19,8 @@ case $CURRENT_PLATFORM in
       ;;
 
       *"el9"*)
-        LCG_RELAESE="106"
-        PLATFORM="x86_64-el9-gcc13-opt"
+        LCG_RELAESE="107a_ATLAS_14"
+        PLATFORM="x86_64-el9-gcc14-opt"
       ;;
 
       *)
@@ -64,6 +64,9 @@ else
         ;;
         complete )
             python -m pip install -e .[complete]
+        ;;
+        cluster )
+            python -m pip install -e .[cluster]
         ;;
         * )
             python -m pip install -e .

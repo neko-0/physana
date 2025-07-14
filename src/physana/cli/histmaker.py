@@ -17,7 +17,10 @@ def cli():
     "--config", type=str, help="path to the JSON configuration for HistMaker."
 )
 @click.option("--combine/--no-combine", default=False)
-def run_histmaker_json(config, combine):
+@click.option("--verbose/--no-verbose", default=False, help="setting logging level.")
+@click.option("--local/--no-local", default=False)
+@click.option("--nworkers", type=int, default=None, help="number of workers.")
+def run_histmaker_json(config, combine, verbose, local, nworkers):
     """
     Run HistMaker from a JSON configuration file.
     """
@@ -31,7 +34,16 @@ def run_histmaker_json(config, combine):
         else:
             histmaker_json = routines_hmaker.JSONHistSetup(config[0])
 
+    # initalize parse all the blocks in the JSON
     histmaker_json.initialize()
+
+    if verbose:
+        histmaker_json.others["verbose"] = True
+    if local:
+        histmaker_json.others["local"] = True
+    if nworkers:
+        histmaker_json.others["max_num_jobs"] = nworkers
+
     histmaker_json.launch()
 
 

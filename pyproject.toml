@@ -46,6 +46,7 @@ dependencies = [
   'aiofiles',
   'numba',
   'lazy_loader',
+  'lz4',
 ]
 
 [project.urls]

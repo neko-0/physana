@@ -8,6 +8,8 @@ import socket
 from functools import partial
 from typing import Union, Dict, List, Any, Callable, Optional, Tuple
 from collections import defaultdict
+from time import perf_counter
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from tqdm import tqdm
 from dask_jobqueue import HTCondorCluster
@@ -15,6 +17,7 @@ from dask.distributed import Client, Future, LocalCluster
 from dask.distributed import as_completed as dask_as_completed
 
 from .dataset_group import get_ntuple_files, get_nfiles
+from .logger_config import setup_logging, set_verbose_histmaker
 
 from ..configs.base import ConfigMgr
 from ..configs.dispatch_tools import split
@@ -22,13 +25,14 @@ from ..configs.merge_tools import merge
 from ..algorithm import run_algorithm, HistMaker
 from ..tools import extract_cutbook_sum_weights
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
 red = "\033[91m"
 green = "\033[92m"
 yellow = "\033[93m"
 reset = "\033[0m"
+
+setup_logging()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class JSONHistSetup:
@@ -63,7 +67,11 @@ class JSONHistSetup:
         self.selections = block_config.get("common_selections", [])
         self.define_selections = block_config.get("define_selections", {})
         self.process_list = block_config.get("processes", [])
+        self.enable_processes = block_config.get("enable_processes", [])
+        self.disable_processes = block_config.get("disable_processes", [])
         self.region_list = block_config.get("regions", [])
+        self.enable_regions = block_config.get("enable_regions", [])
+        self.disable_regions = block_config.get("disable_regions", [])
         self.observable_list = block_config.get("observables", [])
         self.observable2D_list = block_config.get("observables2D", [])
 
@@ -80,7 +88,7 @@ class JSONHistSetup:
         self.others = block_others
 
     def setup_cluster(self) -> HTCondorCluster:
-        n_port = 8786
+        n_port = self.condor.pop("port", 8786)
         self.condor.setdefault(
             "scheduler_options", {'port': n_port, 'host': socket.gethostname()}
         )
@@ -159,7 +167,10 @@ def combine_json_setups(json_files: Union[str, List[str]]) -> 'JSONHistSetup':
 
 
 def fill_config(
-    config_name: str, output_dir: str, entry_range: Optional[Tuple[int, int]] = None
+    config_name: str,
+    output_dir: str,
+    entry_range: Optional[Tuple[int, int]] = None,
+    skip_hist: bool = False,
 ) -> Union[str, None]:
     """
     Opens a configuration file, processes it using HistMaker, and saves the result.
@@ -170,6 +181,10 @@ def fill_config(
         The path to the configuration file to be opened and processed.
     output_dir : str
         The directory where the processed configuration will be saved.
+    entry_range : Optional[Tuple[int, int]], optional
+        The range of entries to be processed, by default None.
+    skip_hist : bool, optional
+        Flag to determine whether to skip histogram generation, by default False.
 
     Returns
     -------
@@ -177,67 +192,92 @@ def fill_config(
         The path to the saved processed configuration, or None if an error occurs.
     """
     try:
+        # Attempt to open the configuration file
         sub_config = ConfigMgr.open(config_name)
     except OSError:
+        # If opening fails, attempt to remove the file and return None
         try:
             os.unlink(config_name)
         except Exception as _err:
             logger.warning(f"Unable to remove {config_name} due to {_err}")
         return None
 
+    # Ensure there is exactly one process set in the configuration
     assert len(sub_config.process_sets) == 1
 
     for pset in sub_config.process_sets:
         for p in pset:
+            # Ensure there is at most one input file for each process
             assert len(p.input_files) <= 1
             if len(p.input_files) == 1:
                 ifile = pathlib.Path(list(p.input_files)[0]).stem.strip(".root")
             else:
                 ifile = None
 
+    # Determine entry range
     if entry_range:
         start, end = entry_range
     else:
         start, end = None, None
 
-    # Setting up output file name.
+    # Set up output file name based on input parameters
     output = f"{output_dir}/output_{pset.name}_{ifile}"
     if start is None and end is None:
         output += ".pkl"
     else:
         output += f"_{start}_{end}.pkl"
 
+    # If output file already exists, return its path
     if pathlib.Path(output).exists():
         return output
 
+    # Configure HistMaker settings
     sub_config.disable_pbar = True
-
-    histmaker = HistMaker(use_mmap=False)
-    histmaker.use_threads = False
-    histmaker.step_size = "5MB"
-    histmaker.nthread = 1
+    histmaker = HistMaker(use_mmap=True, disable_child_thread=False)
+    histmaker.nthread = 4
+    histmaker.use_threads = True
+    histmaker.create_decompression_executor = False
+    histmaker.create_interpretation_executor = False
+    histmaker.step_size = "100MB"
     histmaker.disable_pbar = True
+    histmaker.skip_hist = skip_hist
 
+    # Run the processing algorithm
     run_algorithm(sub_config, histmaker, entry_start=start, entry_stop=end)
 
+    # Save the processed configuration and return the output path
     return sub_config.save(output)
 
 
-def batch_runner(prepared_jobs_list: List[Callable[[], None]]) -> List[None]:
+def batch_runner(
+    prepared_jobs_list: List[Callable[[], None]],
+    processes: int = 1,
+    verbose: bool = False,
+) -> List[None]:
     """
-    Runs a list of jobs in batch.
+    Executes a list of jobs in batch, either sequentially or in parallel.
 
     Parameters
     ----------
     prepared_jobs_list : List[Callable[[], None]]
-        A list of jobs to be run in batch.
+        A list of callable jobs to be executed. Each job is expected to perform an action and return None.
+    processes : int, optional
+        The number of processes to use for parallel execution. Defaults to 1 (sequential execution).
 
     Returns
     -------
     List[None]
-        A list of the results of the jobs. Each job is expected to return None.
+        A list containing None for each job executed, as each job is expected to return None.
     """
-    return [job() for job in prepared_jobs_list]
+    if verbose:
+        set_verbose_histmaker()
+
+    if processes > 1:
+        with ProcessPoolExecutor(processes) as executor:
+            futures = [executor.submit(job) for job in prepared_jobs_list]
+            return [future.result() for future in as_completed(futures)]
+    else:
+        return [job() for job in prepared_jobs_list]
 
 
 def generate_config(
@@ -272,9 +312,17 @@ def generate_config(
 
     # Define processes
     # ===================================================================
+    enable_processes = json_config.enable_processes
+    disable_processes = json_config.disable_processes
     for process in json_config.process_list:
+        if enable_processes and process["name"] not in enable_processes:
+            continue
+        if disable_processes and process["name"] in disable_processes:
+            continue
         process = process.copy()  # make a copy to avoid modifying the original
         name = process["name"]
+        if "//" in name:  # used // for creating alternative name for same samples.
+            name = name.split("//")[0]
         max_files = process.pop("max_files", None)
         input_files = process_file_map[name]
         if max_files:
@@ -287,7 +335,13 @@ def generate_config(
 
     # Define regions
     # ===================================================================
+    enable_regions = json_config.enable_regions
+    disable_regions = json_config.disable_regions
     for region in json_config.region_list:
+        if enable_regions and region["name"] not in enable_regions:
+            continue
+        if disable_regions and region["name"] in disable_regions:
+            continue
         region = region.copy()  # make a copy to avoid modifying the original
         region.setdefault("weights", weights)
         selection_name = region["selection"]
@@ -400,12 +454,15 @@ def preparing_jobs(
                     config_name,
                     f"{json_config.out_path}/output_{name}/",
                     (start, end),
+                    json_config.others.get("skip_hist", False),
                 )
             )
 
         if not enable_cache_split:
             with open(cache_split_file, "w") as f:
                 json.dump(cache_split_keeper, f)
+
+        logger.info(f"Finished preparing {name}")
 
     return prepared_jobs
 
@@ -422,11 +479,34 @@ def single_thread_job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
 
     failed = {x: False for x in prepared_jobs}
 
+    # number of multiple processes for batch running
+    batch_processes = json_config.others.get("batch_processes", 1)
+
+    start_t = perf_counter()
+    total_time = 0.0
     results = defaultdict(list)
     for name, job_list in prepared_jobs.items():
         results_list = results[name]
-        for i in range(0, len(job_list), batch_size):
-            results_list += batch_runner(job_list[i : i + batch_size])
+        total_jobs = len(job_list)
+        for i in range(0, total_jobs, batch_size):
+            results_list += batch_runner(job_list[i : i + batch_size], batch_processes)
+            # print progress
+            percent = round(100 * i / total_jobs, 2)
+            dt = perf_counter() - start_t
+            total_time += dt / 60.0
+            eta = (total_jobs - i) * total_time / (i + batch_size)
+            start_t = perf_counter()
+            logger.info(
+                ", ".join(
+                    [
+                        f"{name} completed {i}/{total_jobs}",
+                        f"{percent}%",
+                        f"{dt=:.2f}s",
+                        f"{eta=:.2f}min",
+                        f"{total_time=:.2f}min",
+                    ]
+                )
+            )
 
     for name, result in results.items():
         logger.info(f"{name} merging jobs: {len(result)}")
@@ -476,14 +556,26 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
         max_jobs = min(max_jobs, min(jobs_size))
     logger.info(f"Scaling jobs to {max_jobs}")
 
+    # number of multiple processes for batch running
+    batch_processes = json_config.others.get("batch_processes", 1)
+    batch_size = json_config.others.get("file_batch_size", 3)
+
     if json_config.others["local"]:
+        logger.info("Running job dispatch locally.")
+        batch_size = 1
+        batch_processes = 1
+        timeout = None
         cluster = LocalCluster(n_workers=max_jobs)
     else:
+        set_verbose_histmaker()
+        timeout = json_config.others.get("timeout", 60 * 5)
         cluster = json_config.setup_cluster()
         cluster.scale(jobs=max_jobs)
 
-    batch_size = json_config.others.get("file_batch_size", 3)
-    timeout = json_config.others.get("timeout", 60 * 5)
+    verbose = json_config.others.get("verbose", False)
+    if verbose:
+        set_verbose_histmaker()
+
     failed = {x: False for x in prepared_jobs}
     futures: Dict[str, List[Future]] = defaultdict(list)
     results: Dict[str, List[Any]] = defaultdict(list)
@@ -493,13 +585,20 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
             futures_name_append = futures[name].append
             for i in range(0, len(job_list), batch_size):
                 futures_name_append(
-                    pool.submit(batch_runner, job_list[i : i + batch_size])
+                    pool.submit(
+                        batch_runner,
+                        job_list[i : i + batch_size],
+                        batch_processes,
+                        verbose,
+                    )
                 )
 
+        start_t = perf_counter()
+        total_time = 0.0
         for name, futures_list in futures.items():
             total_batches = len(futures_list)
             retry_count = 0
-            max_retries = 3
+            max_retries = 10
             finished_num_batch = 0
             while retry_count < max_retries:
                 try:
@@ -509,13 +608,28 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
                     ):
                         try:
                             results[name] += future.result()
-                        except Exception:
+                            retry_count = 0  # reset retry count if one batch succeeded
+                        except Exception as _err:
+                            logger.warning(f"cannot parse {future} due to: {_err}")
                             result_fail = True
                             continue
+                        # show progress and estimate time
                         if i >= finished_num_batch:
                             percent = round(100 * i / total_batches, 2)
+                            dt = perf_counter() - start_t
+                            total_time += dt / 60.0
+                            eta = (total_batches - i) * total_time / i
+                            start_t = perf_counter()
                             logger.info(
-                                f"{name} completed batch {i}/{total_batches}, {percent}%"
+                                ", ".join(
+                                    [
+                                        f"{name} completed batch {i}/{total_batches}",
+                                        f"{percent}%",
+                                        f"{dt=:.2f}s",
+                                        f"{eta=:.2f}min",
+                                        f"{total_time=:.2f}min",
+                                    ]
+                                )
                             )
                             finished_num_batch = i
                     failed[name] = result_fail
@@ -528,8 +642,8 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
                         logger.critical(f"{name} failed after {max_retries} retries")
                         failed[name] = True
                         break
-                except Exception as e:
-                    logger.critical(f"{name} failed with exception {e}")
+                except Exception as _err:
+                    logger.critical(f"{name} failed with exception {_err}")
                     logger.critical(f"{name} failed after {retry_count} retries")
                     failed[name] = True
                     results[name] = []

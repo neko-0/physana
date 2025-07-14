@@ -129,6 +129,9 @@ def _extract_cutbook_sum_weights(
             for obj_name in root_file.keys():
                 if "CutBookkeeper" not in obj_name:
                     continue
+                # what is "CutBookkeeper_Updated"?
+                if "Updated" in obj_name:
+                    continue
 
                 _, dsid, run, syst = obj_name.split("_")
 
@@ -139,9 +142,9 @@ def _extract_cutbook_sum_weights(
 
                 lookup = (dsid, run)
                 if lookup not in sum_weights[syst]:
-                    sum_weights[syst][lookup] = 0.0
+                    sum_weights[syst][lookup] = np.double(0.0)
 
-                sum_weights[syst][lookup] += float(root_file[obj_name].values()[1])
+                sum_weights[syst][lookup] += np.double(root_file[obj_name].values()[1])
 
     sum_weight_tool = SumWeightTool()
     sum_weight_tool.dsid_branch = dsid_branch
@@ -153,9 +156,8 @@ def _extract_cutbook_sum_weights(
 
 def extract_cutbook_sum_weights(config, *args, **kwargs):
     def ntuple_files():
-        for pset in config.process_sets:
-            for p in pset:
-                for file in p.input_files:
-                    yield file
+        return set(
+            file for pset in config.process_sets for p in pset for file in p.input_files
+        )
 
     return _extract_cutbook_sum_weights(ntuple_files(), *args, **kwargs)

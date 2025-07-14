@@ -51,8 +51,9 @@ class Histogram2D(HistogramBase):
         ytitle=None,
         dtype=None,
         filter_paths=None,
+        np_dtype=np.double,
     ):
-        super().__init__(name, dtype, filter_paths=filter_paths)
+        super().__init__(name, dtype, filter_paths=filter_paths, np_dtype=np_dtype)
         self.xvar = xvar
         self.yvar = yvar
         self.xbin = xbin
@@ -121,8 +122,8 @@ class Histogram2D(HistogramBase):
         # n_inf = np.array([-np.inf])
         # xb = np.concatenate([n_inf, np.array(xbins), p_inf])
         # yb = np.concatenate([n_inf, np.array(ybins), p_inf])
-        xb = np.array(xbins, dtype=np.single)
-        yb = np.array(ybins, dtype=np.single)
+        xb = np.array(xbins, dtype=cls_obj.np_dtype)
+        yb = np.array(ybins, dtype=cls_obj.np_dtype)
         cls_obj.bins = [xb, yb]
         return cls_obj
 

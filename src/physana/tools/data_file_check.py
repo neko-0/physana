@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional
 
 from .file_metadata import FileMetaData
 
@@ -14,26 +14,41 @@ DATA_YEAR: dict[str, tuple[int, int]] = {
 }
 
 
-def check_data_completeness(list_of_files: List[str]) -> None:
+def check_data_completeness(
+    list_of_files: List[str],
+    metadata_key: str = "campaign",
+    data_year: Optional[dict[str, tuple[int, int]]] = None,
+) -> None:
     """
-    Check the completeness of data files.
+    Evaluate the completeness of data files by comparing the number of files and events
+    found in the provided list against expected values for each year.
 
     Parameters
     ----------
-    list_of_files : list of str
+    list_of_files : List[str]
         List of file paths to check for completeness.
+    metadata_key : str, optional
+        Attribute key to access metadata for each file. Defaults to "campaign".
+    data_year : dict[str, tuple[int, int]], optional
+        Dictionary of expected number of files and events for each year.
+        If not provided, uses a built-in dictionary.
     """
-    nfiles: dict[str, int] = {year: 0 for year in DATA_YEAR}
-    nevents: dict[str, int] = {year: 0 for year in DATA_YEAR}
+
+    if data_year is None:
+        data_year = DATA_YEAR
+
+    nfiles: dict[str, int] = {year: 0 for year in data_year}
+    nevents: dict[str, int] = {year: 0 for year in data_year}
 
     for file in list_of_files:
         fmd = FileMetaData(file)
-        if fmd.campaign not in DATA_YEAR:
+        lookup = str(getattr(fmd, metadata_key))
+        if lookup not in data_year:
             continue
-        nfiles[fmd.campaign] += fmd.num_executed_files
-        nevents[fmd.campaign] += fmd.num_events
+        nfiles[lookup] += fmd.num_executed_files
+        nevents[lookup] += fmd.num_events
 
-    for year, (expected_files, expected_events) in DATA_YEAR.items():
+    for year, (expected_files, expected_events) in data_year.items():
         nfile_fail = nfiles[year] != expected_files
         nevent_fail = nevents[year] != expected_events
         if nfile_fail or nevent_fail:

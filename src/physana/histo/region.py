@@ -26,6 +26,7 @@ class Region(AnalysisContainer):
         "effective_nevents",
         "sumW2",
         "branch_reserved",
+        "histo_branches",
     )
 
     def __init__(
@@ -41,11 +42,15 @@ class Region(AnalysisContainer):
         self.hist_type_filter = Filter(filter_hist_types, key='dtype')
         self.full_selection = None
         self.correction_type = correction_type
-        self.total_nevents = 0  # number of weighted event before selection.
-        self.filled_nevents = 0  # pure number event filled into this region
-        self.effective_nevents = 0  # effective number of event (with weights)
-        self.sumW2 = 0
+        # number of weighted event before selection.
+        self.total_nevents = np.double(0.0)
+        # pure number event filled into this region
+        self.filled_nevents = 0
+        # effective number of event (with weights)
+        self.effective_nevents = np.double(0.0)
+        self.sumW2 = np.double(0.0)
         self.branch_reserved = False
+        self.histo_branches = set()
 
     def __str__(self):
         space = " " * 3
@@ -91,25 +96,28 @@ class Region(AnalysisContainer):
         c_self.div(rhs)
         return c_self
 
-    def nevents_add(self, rhs):
-        self.total_nevents += rhs
-        self.filled_nevents += rhs
-        self.effective_nevents += rhs
+    def get_counts(self):
+        return self.total_nevents, self.filled_nevents, self.effective_nevents
 
-    def nevents_sub(self, rhs):
-        self.total_nevents -= rhs
-        self.filled_nevents -= rhs
-        self.effective_nevents -= rhs
+    def nevents_add(self, rhs_total, rhs_filled, rhs_effective):
+        self.total_nevents += rhs_total
+        self.filled_nevents += rhs_filled
+        self.effective_nevents += rhs_effective
 
-    def nevents_mul(self, rhs):
-        self.total_nevents *= rhs
-        self.filled_nevents *= rhs
-        self.effective_nevents *= rhs
+    def nevents_sub(self, rhs_total, rhs_filled, rhs_effective):
+        self.total_nevents -= rhs_total
+        self.filled_nevents -= rhs_filled
+        self.effective_nevents -= rhs_effective
 
-    def nevents_div(self, rhs):
-        self.filled_nevents /= rhs
-        self.total_nevents /= rhs
-        self.effective_nevents /= rhs
+    def nevents_mul(self, rhs_total, rhs_filled, rhs_effective):
+        self.total_nevents *= rhs_total
+        self.filled_nevents *= rhs_filled
+        self.effective_nevents *= rhs_effective
+
+    def nevents_div(self, rhs_total, rhs_filled, rhs_effective):
+        self.total_nevents /= rhs_total
+        self.filled_nevents /= rhs_filled
+        self.effective_nevents /= rhs_effective
 
     def _name_operation(self, rhs, op):
         if self.name != rhs.name:
@@ -123,14 +131,14 @@ class Region(AnalysisContainer):
     def _apply_operation(self, rhs, operation):
         """Apply a mathematical operation to this object and another object."""
         if isinstance(rhs, (int, float, np.floating)):
-            getattr(self, f"nevents_{operation}")(rhs)
+            getattr(self, f"nevents_{operation}")(rhs, rhs, rhs)
             for histogram in self:
                 getattr(histogram, operation)(rhs)
         elif not isinstance(rhs, self.__class__):
             raise TypeError(f"Invalid {operation=} with {type(rhs)=}")
         else:
             self._name_operation(rhs, operation)
-            getattr(self, f"nevents_{operation}")(rhs.effective_nevents)
+            getattr(self, f"nevents_{operation}")(*rhs.get_counts())
             for key, value in rhs._data.items():
                 if key in self._data:
                     getattr(self._data[key], operation)(value)
@@ -171,9 +179,9 @@ class Region(AnalysisContainer):
             self.filled_nevents /= rhs_fille_nevents
             self.effective_nevents /= rhs_effective_nevents
         except ZeroDivisionError:
-            self.total_nevents = 0
+            self.total_nevents = np.double(0.0)
             self.filled_nevents = 0
-            self.effective_nevents = 0
+            self.effective_nevents = np.double(0.0)
 
     @property
     def histograms(self):
@@ -254,10 +262,10 @@ class Region(AnalysisContainer):
         super().clear()
 
     def clear_content(self):
-        self.total_nevents = 0
+        self.total_nevents = np.double(0.0)
         self.filled_nevents = 0
-        self.effective_nevents = 0
-        self.sumW2 = 0
+        self.effective_nevents = np.double(0.0)
+        self.sumW2 = np.double(0.0)
         for hist in self.histograms:
             hist.clear_content()
 

@@ -258,7 +258,7 @@ class RootBackend:
             legend_tag = plot_job.tag
             legend_opt = legend_opt.lower().replace(" ", "").split(",")
             if 'int' in legend_opt:
-                legend_tag += f", {int(plot_job.histogram.Integral())}"
+                legend_tag += f", {int(plot_job.histogram.Integral(0, -1))}"
             if "prediction" in legend_opt:
                 legend_tag = f"prediction: {legend_tag}"
             elif "mc" in legend_opt:
