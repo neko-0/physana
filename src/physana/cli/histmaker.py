@@ -38,7 +38,7 @@ def run_histmaker_json(config, combine, verbose, local, nworkers):
     histmaker_json.initialize()
 
     if verbose:
-        routines_hmaker.set_verbose()
+        histmaker_json.others["verbose"] = True
     if local:
         histmaker_json.others["local"] = True
     if nworkers:

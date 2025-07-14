@@ -17,6 +17,7 @@ from dask.distributed import Client, Future, LocalCluster
 from dask.distributed import as_completed as dask_as_completed
 
 from .dataset_group import get_ntuple_files, get_nfiles
+from .logger_config import setup_logging, set_verbose_histmaker
 
 from ..configs.base import ConfigMgr
 from ..configs.dispatch_tools import split
@@ -24,27 +25,14 @@ from ..configs.merge_tools import merge
 from ..algorithm import run_algorithm, HistMaker
 from ..tools import extract_cutbook_sum_weights
 
-# Set the module logger to ERROR
-logging.config.dictConfig(
-    {
-        'version': 1,
-        'loggers': {
-            'distributed': {'level': 'ERROR'},
-            'distributed.core*': {'level': 'ERROR'},
-            'distributed.worker*': {'level': 'ERROR'},
-            'distributed.nanny': {'level': 'ERROR'},
-            'physana.algorithm.histmaker': {'level': 'ERROR'},
-        },
-    }
-)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
 red = "\033[91m"
 green = "\033[92m"
 yellow = "\033[93m"
 reset = "\033[0m"
+
+setup_logging()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class JSONHistSetup:
@@ -262,7 +250,9 @@ def fill_config(
 
 
 def batch_runner(
-    prepared_jobs_list: List[Callable[[], None]], processes: int = 1
+    prepared_jobs_list: List[Callable[[], None]],
+    processes: int = 1,
+    verbose: bool = False,
 ) -> List[None]:
     """
     Executes a list of jobs in batch, either sequentially or in parallel.
@@ -279,6 +269,9 @@ def batch_runner(
     List[None]
         A list containing None for each job executed, as each job is expected to return None.
     """
+    if verbose:
+        set_verbose_histmaker()
+
     if processes > 1:
         with ProcessPoolExecutor(processes) as executor:
             futures = [executor.submit(job) for job in prepared_jobs_list]
@@ -568,14 +561,20 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
     batch_size = json_config.others.get("file_batch_size", 3)
 
     if json_config.others["local"]:
+        logger.info("Running job dispatch locally.")
         batch_size = 1
         batch_processes = 1
         timeout = None
         cluster = LocalCluster(n_workers=max_jobs)
     else:
+        set_verbose_histmaker()
         timeout = json_config.others.get("timeout", 60 * 5)
         cluster = json_config.setup_cluster()
         cluster.scale(jobs=max_jobs)
+
+    verbose = json_config.others.get("verbose", False)
+    if verbose:
+        set_verbose_histmaker()
 
     failed = {x: False for x in prepared_jobs}
     futures: Dict[str, List[Future]] = defaultdict(list)
@@ -587,7 +586,10 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
             for i in range(0, len(job_list), batch_size):
                 futures_name_append(
                     pool.submit(
-                        batch_runner, job_list[i : i + batch_size], batch_processes
+                        batch_runner,
+                        job_list[i : i + batch_size],
+                        batch_processes,
+                        verbose,
                     )
                 )
 
@@ -596,7 +598,7 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
         for name, futures_list in futures.items():
             total_batches = len(futures_list)
             retry_count = 0
-            max_retries = 3
+            max_retries = 10
             finished_num_batch = 0
             while retry_count < max_retries:
                 try:
@@ -606,6 +608,7 @@ def job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
                     ):
                         try:
                             results[name] += future.result()
+                            retry_count = 0  # reset retry count if one batch succeeded
                         except Exception as _err:
                             logger.warning(f"cannot parse {future} due to: {_err}")
                             result_fail = True
