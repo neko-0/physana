@@ -10,6 +10,7 @@ import logging
 
 from .histo import Histogram, Histogram2D
 from .backends import RootBackend
+from .backends.root import root_batch_context
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -60,13 +61,16 @@ class PlotJob:
         self.name = name  # observable name
         self._divide_binwidth = False
         self.legend_style = None
+        self._rhist = None  # keeping the ROOT histogram
         if divide_binwidth:
             self.divide_binwidth()
 
     @property
     def histogram(self):
         if isinstance(self._histo, (Histogram, Histogram2D)):
-            return self._histo.root
+            if self._rhist is None:
+                self._rhist = self._histo.root
+            return self._rhist
         else:
             return self._histo
 
@@ -154,11 +158,10 @@ class PlotMaker(object):
     def make_canvas(self, *args, **kwargs):
         if self.backend.lower() == "root":
             PlotMaker.c_counter += 1
-            c_counter = PlotMaker.c_counter
-            return RootBackend.make_canvas(str(c_counter), *args, **kwargs)
+            return RootBackend.make_canvas(str(PlotMaker.c_counter), *args, **kwargs)
         else:
             logger.warning(f"{self.backend} dose not have make_canvas")
-            return None
+        return None
 
     def make_legend(self, *args, **kwargs):
         # x1=0.65, y1=0.7, x2=0.85, y2=0.9, text_size=0.03
@@ -509,6 +512,7 @@ class PlotMaker(object):
 
         return PlotJob(tag, stack_histo, "HIST", obsname)
 
+    @root_batch_context
     def _root_save_plot(
         self,
         plot_job_list,
@@ -516,7 +520,7 @@ class PlotMaker(object):
         oname,
         *,
         legend=None,
-        logy=True,
+        logy=False,
         xrange=None,
         yrange=None,
         figfmt="png,pdf",
@@ -530,10 +534,6 @@ class PlotMaker(object):
         divide_binwidth=True,
         ytitles=None,
     ):
-        ROOT.gROOT.SetBatch(batch)
-        _verbose = ROOT.gErrorIgnoreLevel
-        ROOT.gErrorIgnoreLevel = ROOT.kFatal
-
         logger.info("preparing canvas.")
         canvas = self.make_canvas()
         canvas.cd()
@@ -580,13 +580,13 @@ class PlotMaker(object):
                 hline.Draw()
                 canvas.cd()
 
-        canvas.Update()
-
         if legend:
             try:
                 legend.Draw()
             except AttributeError:
                 pass
+
+        canvas.Update()
 
         logger.info("finalizing canvas.")
 
@@ -700,7 +700,8 @@ class PlotMaker(object):
                     _graph.GetXaxis().SetRangeUser(_histo_xmin, _histo_xmax)
                     _graph.Draw("2 same")
 
-        canvas.Update()
+            canvas.Update()
+
         figfmt = figfmt.replace(" ", "")
         for pic_format in figfmt.split(","):
             save_path = pathlib.Path(self.output_dir).joinpath(
@@ -708,8 +709,6 @@ class PlotMaker(object):
             )
             save_path.parent.mkdir(parents=True, exist_ok=True)
             canvas.SaveAs(str(save_path.resolve()))
-        ROOT.gROOT.SetBatch(False)
-        ROOT.gErrorIgnoreLevel = _verbose
 
     def _root_save_canvas(
         self,
