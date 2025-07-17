@@ -20,8 +20,8 @@ logger.setLevel(logging.WARNING)
 
 
 def file_batch_generator(
-    files: Union[list[str], list[Path]], batch_size: int = None
-) -> Iterator[Union[list[str], list[Path]]]:
+    files: Union[list[str], list["Path"]], batch_size: int = None
+) -> Iterator[Union[list[str], list["Path"]]]:
     """
     A generator that yield batches of files from given list.
 
@@ -49,13 +49,13 @@ def file_batch_generator(
 
 
 def extract_systematic_list(
-    config: ConfigMgr,
+    config: "ConfigMgr",
     syst_list: list[str],
     nominal: bool = False,
     skip: Union[None, set] = None,
     is_theory: bool = False,
     keep_data: str = "data",
-) -> ConfigMgr:
+) -> "ConfigMgr":
     """
     Extract systematics from a given list into a new ConfigMgr object.
 
@@ -108,7 +108,7 @@ def extract_systematic_list(
     return c_config
 
 
-def split_by_processes(config: ConfigMgr, copy: bool = True) -> Iterator[ConfigMgr]:
+def split_by_processes(config: "ConfigMgr", copy: bool = True) -> Iterator["ConfigMgr"]:
     """
     Splitting config by process
 
@@ -148,8 +148,8 @@ def split_by_processes(config: ConfigMgr, copy: bool = True) -> Iterator[ConfigM
 
 
 def split_by_input_files(
-    iconfig: ConfigMgr, shallow: bool = False, batch_size: int = 20, **_
-) -> Iterator[ConfigMgr]:
+    iconfig: "ConfigMgr", shallow: bool = False, batch_size: int = 20, **_
+) -> Iterator["ConfigMgr"]:
     """
     Split configuration by input files.
 
@@ -194,8 +194,8 @@ def split_by_input_files(
 
 
 def split_by_entries(
-    iconfig: ConfigMgr, nbatch: int = 5, tree_name: str = "reco", **_
-) -> Iterator[tuple[ConfigMgr, int, int]]:
+    iconfig: "ConfigMgr", nbatch: int = 5, tree_name: str = "reco", **_
+) -> Iterator[tuple["ConfigMgr", int, int]]:
     """
     Split configuration into batches of entries.
 
@@ -256,8 +256,8 @@ def split_by_entries(
 
 
 def split_by_regions(
-    configMgr: ConfigMgr, region_split_size: int = 5, copy: bool = True
-) -> Iterator[ConfigMgr]:
+    configMgr: "ConfigMgr", region_split_size: int = 5, copy: bool = True
+) -> Iterator["ConfigMgr"]:
     """
     Splitting config by regions
 
@@ -295,15 +295,15 @@ def split_by_regions(
     psets = (x for pset in configMgr.process_sets for x in pset)
     for p in psets:
         split_name = p.name
-        if p.systematic:
-            split_name += f"-{'_'.join(p.systematic.full_name)}"
+        if p.systematics:
+            split_name += f"-{'_'.join(p.systematics.full_name)}"
         else:
             split_name += "-nominal"
         # in the case of configMgr object already prepared, the
         # process needs to clear it's regions, otherwise it will
         # end up with double amount the events.
         c_process = p.copy(shallow=True)
-        c_process.regions = []
+        c_process.clear()
         rsplit_count = 1
         for i in range(0, r_size, n):
             my_config = c_config.copy(shallow=True)
@@ -317,7 +317,7 @@ def split_by_regions(
             else:
                 my_config.regions = region_slice
                 c_process = p.copy(shallow=True)
-                c_process.regions = []
+                c_process.clear()
             yield my_config
             rsplit_count += 1
         for i in range(0, aux_r_size, n):
@@ -334,21 +334,56 @@ def split_by_regions(
             else:
                 my_config.aux_regions = region_slice
                 c_process = p.copy(shallow=True)
-                c_process.regions = []
+                c_process.clear()
             yield my_config
             rsplit_count += 1
         logger.debug(f"splited {rsplit_count} per process for {split_name}")
 
 
+def split_by_histograms(config, with_name=False):
+
+    def split_helper():
+        for process_split in split_by_processes(config, copy=False):
+            for region_split in split_by_regions(process_split, 1, copy=False):
+                yield region_split
+
+    for split_config in split_helper():
+        n_regions = len(split_config.regions)
+        n_aux_regions = len(split_config.aux_regions)
+        assert n_regions + n_aux_regions == 1
+        full_name = None
+        if with_name:
+            proc = list((x for x in split_config.process_sets))[0]
+            if proc.systematics:
+                pname = f"{proc.name}/{proc.systematics.full_name}"
+            else:
+                pname = f"{proc.name}/NOSYS"
+            if split_config.regions:
+                rname = split_config.regions[0].name
+            elif split_config.aux_regions:
+                rname = split_config.aux_regions[0].name
+            full_name = f"{pname}/{rname}"
+        for hist in config.histograms:
+            c_config = split_config.copy(shallow=True)
+            c_config.histograms = [hist.copy(shallow=True)]
+            c_config.histograms2D = []
+            yield (f"{full_name}/{hist.name}", c_config) if with_name else c_config
+        for hist in config.histograms2D:
+            c_config = split_config.copy(shallow=True)
+            c_config.histograms = []
+            c_config.histograms2D = [hist.copy(shallow=True)]
+            yield (f"{full_name}/{hist.name}", c_config) if with_name else c_config
+
+
 def split_by_systematic(
-    config: ConfigMgr,
+    config: "ConfigMgr",
     syst_names: Optional[list[str]] = None,
     include_nominal: bool = False,
     skip_process: list[str] = [],
     copy: bool = True,
     with_name: bool = False,
     batch_size: Optional[int] = None,
-) -> Iterator[Union[ConfigMgr, tuple[str, ConfigMgr]]]:
+) -> Iterator[Union["ConfigMgr", tuple[str, "ConfigMgr"]]]:
     """
     Splitting config by given single systematic
 
@@ -444,8 +479,8 @@ def split_by_systematic(
 
 
 def split_by_regions_and_files(
-    configMgr: ConfigMgr, *args, **kwargs
-) -> Iterator[ConfigMgr]:
+    configMgr: "ConfigMgr", *args, **kwargs
+) -> Iterator["ConfigMgr"]:
     """
     Splitting the processes in configMgr to produce smaller configMgr.
     Split by regions first, then split by input files.
@@ -457,8 +492,8 @@ def split_by_regions_and_files(
 
 
 def split_by_processes_and_files(
-    configMgr: ConfigMgr, *args, **kwargs
-) -> Iterator[ConfigMgr]:
+    configMgr: "ConfigMgr", *args, **kwargs
+) -> Iterator["ConfigMgr"]:
     """
     Splitting the processes in configMgr to produce smaller configMgr.
     Split by processes first, then split by input files.
@@ -469,8 +504,8 @@ def split_by_processes_and_files(
 
 
 def split_by_systematic_and_process(
-    configMgr: ConfigMgr, *args, **kwargs
-) -> Iterator[tuple[str, ConfigMgr]]:
+    configMgr: "ConfigMgr", *args, **kwargs
+) -> Iterator[tuple[str, "ConfigMgr"]]:
     """
     Splitting the processes in configMgr to produce smaller configMgr.
     Split by systematic first, then split by process.
@@ -484,8 +519,8 @@ def split_by_systematic_and_process(
 
 
 def split_by_systematic_process_files(
-    configMgr: ConfigMgr, *args, **kwargs
-) -> Iterator[tuple[str, int, ConfigMgr]]:
+    configMgr: "ConfigMgr", *args, **kwargs
+) -> Iterator[tuple[str, int, "ConfigMgr"]]:
     """
     Splitting the processes in configMgr to produce smaller configMgr.
     Split by systematic first, then split by process and then by input files.
@@ -498,8 +533,10 @@ def split_by_systematic_process_files(
 
 
 def split(
-    configMgr: ConfigMgr, split_type: str = "process", *args, **kwargs
-) -> Iterator[Union[ConfigMgr, tuple[str, ConfigMgr], tuple[str, int, ConfigMgr]]]:
+    configMgr: "ConfigMgr", split_type: str = "process", *args, **kwargs
+) -> Iterator[
+    Union["ConfigMgr", tuple[str, "ConfigMgr"], tuple[str, int, "ConfigMgr"]]
+]:
     """
     Splitting the processes in configMgr to produce smaller configMgr based on the split type.
 
@@ -508,7 +545,7 @@ def split(
     configMgr : ConfigMgr
         Configuration manager to be split.
     split_type : str, optional
-        Type of split to perform: "process", "region", "systematic", "ifile",
+        Type of split to perform: "process", "region", "histogram", "systematic", "ifile",
         "region-file", "process-file", "systematic-process", "systematic-process-files",
         or "entries". Defaults to "process".
     *args
@@ -525,6 +562,8 @@ def split(
         split_method = split_by_processes
     elif split_type == "region":
         split_method = split_by_regions
+    elif split_type == "histogram":
+        split_method = split_by_histograms
     elif split_type == "systematic":
         split_method = split_by_systematic
     elif split_type == "ifile":
