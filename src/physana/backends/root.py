@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 import warnings
 import logging
+from functools import wraps
 
 try:
     import ROOT
 
     ROOT.PyConfig.IgnoreCommandLineOptions = True
-    ROOT.gROOT.SetBatch(True)
 except ImportError:
     warnings.warn("Cannot import ROOT module!")
 
@@ -18,6 +18,36 @@ if TYPE_CHECKING:
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
+
+
+class RootBatchContext:
+    def __init__(self):
+        self._verbose = None
+
+    def __call__(self, func):
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            _verbose = ROOT.gErrorIgnoreLevel
+            ROOT.gROOT.SetBatch(True)
+            ROOT.gErrorIgnoreLevel = ROOT.kFatal
+            try:
+                return func(*args, **kwargs)
+            finally:
+                ROOT.gROOT.SetBatch(False)
+                ROOT.gErrorIgnoreLevel = _verbose
+
+        return wrapper
+
+    def __enter__(self):
+        self._verbose = ROOT.gErrorIgnoreLevel
+        ROOT.gROOT.SetBatch(True)
+        ROOT.gErrorIgnoreLevel = ROOT.kFatal
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        ROOT.gROOT.SetBatch(False)
+        ROOT.gErrorIgnoreLevel = self._verbose
 
 
 class RootBackend:

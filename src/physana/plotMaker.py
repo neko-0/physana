@@ -9,8 +9,7 @@ import copy
 import logging
 
 from .histo import Histogram, Histogram2D
-from .backends import RootBackend
-from .backends.root import root_batch_context
+from .backends import RootBackend, RootBatchContext
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -21,7 +20,6 @@ try:
     import ROOT
 
     ROOT.PyConfig.IgnoreCommandLineOptions = True
-    ROOT.gROOT.SetBatch(True)
     ROOT.gStyle.SetOptStat(0)
 except ImportError:
     pass
@@ -376,6 +374,7 @@ class PlotMaker(object):
     def root_set_color(self, histogram, color):
         RootBackend.apply_styles(histogram, color=self._root_color(color))
 
+    @RootBatchContext()
     def _root_stack(
         self,
         histo_dict,
@@ -402,8 +401,6 @@ class PlotMaker(object):
             color_dict = {
                 i: ROOT.TColor.GetColor(x) for i, x in enumerate(STACK_PLOT_HEX)
             }
-
-        ROOT.gROOT.SetBatch(True)
 
         # legend = self.make_legend()
         legend_opt = legend_opt.replace(" ", "").split(",")
@@ -506,13 +503,11 @@ class PlotMaker(object):
         stack_histo.GetXaxis().SetTitle(xtitle)
         stack_histo.GetYaxis().SetTitle(ytitle)
 
-        ROOT.gROOT.SetBatch(False)
-
         obsname = next(iter(histo_dict.values())).name
 
         return PlotJob(tag, stack_histo, "HIST", obsname)
 
-    @root_batch_context
+    @RootBatchContext()
     def _root_save_plot(
         self,
         plot_job_list,
@@ -710,6 +705,7 @@ class PlotMaker(object):
             save_path.parent.mkdir(parents=True, exist_ok=True)
             canvas.SaveAs(str(save_path.resolve()))
 
+    @RootBatchContext()
     def _root_save_canvas(
         self,
         canvas,
@@ -724,10 +720,6 @@ class PlotMaker(object):
         show_text=False,
         label_txt=None,
     ):
-        ROOT.gROOT.SetBatch(True)
-        _verbose = ROOT.gErrorIgnoreLevel
-        ROOT.gErrorIgnoreLevel = ROOT.kFatal
-
         if logy:
             canvas.SetLogy()
         if logx:
@@ -765,9 +757,7 @@ class PlotMaker(object):
             save_path.parent.mkdir(parents=True, exist_ok=True)
             canvas.SaveAs(str(save_path.resolve()))
 
-        ROOT.gROOT.SetBatch(False)
-        ROOT.gErrorIgnoreLevel = _verbose
-
+    @RootBatchContext()
     def _root_ratio_plot(
         self,
         plot_job1,
@@ -782,8 +772,6 @@ class PlotMaker(object):
         invert_ratio=False,
         width=None,
     ):
-        ROOT.gROOT.SetBatch(True)
-
         h1 = plot_job1.histogram  # .GetStack().Last().Clone()
         h2 = plot_job2.histogram
         if xrange:
@@ -930,12 +918,11 @@ class PlotMaker(object):
             ratio.GetLowerRefGraph().SetMaximum(low_yrange[1])
             ratio.GetLowerRefGraph().SetMinimum(low_yrange[0])
 
-        ROOT.gROOT.SetBatch(False)
-
         return PlotJob(
             f"{plot_job1.tag}_over_{plot_job2.tag}", ratio, "", plot_job1.name
         )
 
+    @RootBatchContext()
     def _root_multiple_ratio_plot(
         self,
         sub_dir,
@@ -956,8 +943,6 @@ class PlotMaker(object):
         show_text=False,
         label_txt=None,
     ):
-        ROOT.gROOT.SetBatch(True)
-
         ratio_canvas = self.make_canvas()
         ratio_canvas.cd()
         ratio_list = []
@@ -1062,8 +1047,6 @@ class PlotMaker(object):
             show_text=show_text,
             label_txt=label_txt,
         )
-
-        ROOT.gROOT.SetBatch(False)
 
         # return (canvas,ratio)#(PlotJob(obs, ratio, ""), ratio_list)
 
