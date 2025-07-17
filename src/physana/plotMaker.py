@@ -528,6 +528,7 @@ class PlotMaker(object):
         show_total_syts_only=True,  # show total syst. band only.
         divide_binwidth=True,
         ytitles=None,
+        atlas_label_pos=None,
     ):
         logger.info("preparing canvas.")
         canvas = self.make_canvas()
@@ -600,7 +601,9 @@ class PlotMaker(object):
                 else:
                     logger.warning(f"cannot process type {type(t)}")
 
-        if is_ratio:
+        if atlas_label_pos:
+            label_pos = atlas_label_pos
+        elif is_ratio:
             label_pos = {"x": 0.185, "y": 0.87}
         else:
             label_pos = {"x": 0.185, "y": 0.82}
