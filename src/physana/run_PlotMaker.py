@@ -8,6 +8,7 @@ from tqdm import tqdm
 from pathlib import Path
 from matplotlib import pyplot
 from cycler import cycler
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from . import histManipulate
 from .plotMaker import PlotMaker, PlotJob, COLOR_HEX
@@ -811,45 +812,84 @@ def plot_ratio(
 
 # ==============================================================================
 def plot_histograms(
-    config,
-    histograms,
-    output="example",
+    histograms: Union[Histogram, List[Histogram]],
+    output_name: str = "example",
     *,
-    label=None,
-    batch=False,
-    yrange=None,
-    xrange=None,
-):
+    labels: Optional[Union[str, List[str]]] = None,
+    yrange: Optional[Tuple[float, float]] = None,
+    xrange: Optional[Tuple[float, float]] = None,
+    legend_kwargs: Optional[Dict[str, Any]] = None,
+    atlas_label_pos: Optional[Dict[str, float]] = None,
+    output_directory: str = "plots",
+    **kwargs,
+) -> None:
     """
-    plot histograms
+    Plot histograms.
 
-    histograms (Histogram or list(Histogram)) : histogram object for plotting.
-    label (str or list(str)) : legend label for histograms.
-    output (str) : name for saving image.
-    batch (bool) : batch mode.
+    Parameters
+    ----------
+    histograms : Histogram or list(Histogram)
+        histogram object for plotting.
+    output_name : str, optional
+        name for saving image. Default is "example".
+    labels : str or list(str), optional
+        legend label for histograms. Default is None.
+    yrange : tuple(float, float), optional
+        yrange for plotting. Default is None.
+    xrange : tuple(float, float), optional
+        xrange for plotting. Default is None.
+    legend_kwargs : dict, optional
+        kwargs for legend. Default is None.
+    atlas_label_pos : dict, optional
+        position of atlas label. Default is None.
+    output_directory : str, optional
+        output directory. Default is "plots".
     """
 
     if not isinstance(histograms, list):
         histograms = [histograms]
-    if label and not isinstance(label, list):
-        label = [label]
 
-    plotmaker = PlotMaker(config, "plots")
-    leg = plotmaker.make_legend()
-    if not label:
-        label = [histo.name for histo in histograms]
+    if labels is None:
+        labels = [histo.name for histo in histograms]
+    elif not isinstance(labels, list):
+        labels = [labels]
 
-    histograms = zip(histograms, label)
+    legend_kwargs = legend_kwargs or {}
+
+    if atlas_label_pos:
+        # take only x and y arguments
+        atlas_label_pos = {
+            "x": atlas_label_pos.get("x", 0.185),
+            "y": atlas_label_pos.get("y", 0.82),
+        }
+    else:
+        atlas_label_pos = {"x": 0.185, "y": 0.82}
+
+    plotmaker = PlotMaker(output_dir=output_directory)
+
+    leg = plotmaker.make_legend(**legend_kwargs)
+
     plot_jobs = []
     color = 2
-    for histo, tag in histograms:
-        job = PlotJob(tag, histo, "h")
-        plotmaker.root_set_color(job.histogram, color)
-        plotmaker.update_legend(leg, "", job)
-        plot_jobs.append(job)
+    for histo, label in zip(histograms, labels):
+        plot_job = PlotJob(label, histo, "h", histo.name)
+        plot_job.legend_style = "FLEP"
+        RootBackend.apply_styles(plot_job.histogram, linewidth=2)
+        plotmaker.root_set_color(plot_job.histogram, color)
+        plotmaker.update_legend(leg, "", plot_job)
+        plot_jobs.append(plot_job)
         color += 1
 
-    plotmaker.save_plot(plot_jobs, leg, "", output, yrange=yrange, xrange=xrange)
+    plotmaker.save_plot(
+        plot_jobs,
+        "",
+        output_name,
+        legend=leg,
+        yrange=yrange,
+        xrange=xrange,
+        atlas_label_pos=atlas_label_pos,
+        **kwargs,
+    )
 
 
 # ==============================================================================

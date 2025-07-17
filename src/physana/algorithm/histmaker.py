@@ -203,6 +203,7 @@ class HistMaker(BaseAlgorithm):
         self.phsp_fallback: bool = True
 
         # file to cutbook sum weights
+        self.divide_sum_weights: bool = True
         self.sum_weights_file: Optional[str] = None
         self.sum_weights_tool: Optional[SumWeightTool] = None
 
@@ -828,7 +829,7 @@ class HistMaker(BaseAlgorithm):
                         sumW2 = np.zeros(nevent)
 
                         # MC only weights
-                        if not p.is_data:
+                        if not p.is_data and self.divide_sum_weights:
                             # multiply MC xsec and divide by sum weights
                             weights *= xsec_tool(event) / sum_weights_tool(event)
 

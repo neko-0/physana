@@ -170,7 +170,7 @@ def fill_config(
     config_name: str,
     output_dir: str,
     entry_range: Optional[Tuple[int, int]] = None,
-    skip_hist: bool = False,
+    histmaker_settings: Optional[Dict[str, Any]] = None,
 ) -> Union[str, None]:
     """
     Opens a configuration file, processes it using HistMaker, and saves the result.
@@ -183,8 +183,8 @@ def fill_config(
         The directory where the processed configuration will be saved.
     entry_range : Optional[Tuple[int, int]], optional
         The range of entries to be processed, by default None.
-    skip_hist : bool, optional
-        Flag to determine whether to skip histogram generation, by default False.
+    histmaker_settings : Optional[Dict[str, Any]], optional
+        A dictionary of settings to be passed to HistMaker, by default None.
 
     Returns
     -------
@@ -231,7 +231,7 @@ def fill_config(
     if pathlib.Path(output).exists():
         return output
 
-    # Configure HistMaker settings
+    # Configure HistMaker with default settings
     sub_config.disable_pbar = True
     histmaker = HistMaker(use_mmap=True, disable_child_thread=False)
     histmaker.nthread = 4
@@ -240,7 +240,16 @@ def fill_config(
     histmaker.create_interpretation_executor = False
     histmaker.step_size = "100MB"
     histmaker.disable_pbar = True
-    histmaker.skip_hist = skip_hist
+    histmaker.skip_hist = False
+    histmaker.divide_sum_weights = False
+
+    # Overwrite histmaker settings if provided
+    if histmaker_settings:
+        for key, value in histmaker_settings.items():
+            if hasattr(histmaker, key):
+                setattr(histmaker, key, value)
+            else:
+                logger.warning(f"Unknown attribute '{key}' in histmaker settings.")
 
     # Run the processing algorithm
     run_algorithm(sub_config, histmaker, entry_start=start, entry_stop=end)
@@ -353,6 +362,11 @@ def generate_config(
     # ===================================================================
     for observable in json_config.observable_list:
         setting.add_observable(**observable)
+        if json_config.others.get("add_noweight_hist", False):
+            hist = setting.histograms[-1].copy()
+            hist.name += "_noweight"
+            hist.disable_weights = True
+            setting.append_histogram_1d(hist)
 
     for observable in json_config.observable2D_list:
         setting.add_observable2D(**observable)
@@ -420,6 +434,9 @@ def preparing_jobs(
 
         logger.info(f"Start preparing {name}")
 
+        # only limited amount of histmaker settings are configurable via JSON.
+        histmaker_settings = json_config.others.get("histmaker_settings", None)
+
         cache_split_keeper = []
         for sub_config, start, end in tqdm(split_config, leave=False):
             if not enable_cache_split:
@@ -454,7 +471,7 @@ def preparing_jobs(
                     config_name,
                     f"{json_config.out_path}/output_{name}/",
                     (start, end),
-                    json_config.others.get("skip_hist", False),
+                    histmaker_settings,
                 )
             )
 

@@ -1,4 +1,4 @@
-from .root import RootBackend
+from .root import RootBackend, RootBatchContext
 from .style import StyleMetadata
 
-__all__ = ['RootBackend', 'StyleMetadata']
+__all__ = ['RootBackend', 'RootBatchContext', 'StyleMetadata']
