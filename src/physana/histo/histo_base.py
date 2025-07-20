@@ -36,6 +36,7 @@ class HistogramBase(BaseAnalysisContainer):
         "filter",
         "weights",
         "parent",
+        "disable_weights",
         "_bin_content",
         "_sumW2",
         "_store_data",
@@ -52,6 +53,9 @@ class HistogramBase(BaseAnalysisContainer):
         self._bin_content = None
         self._sumW2 = None
         self._store_data = False
+
+        # option for turning of weights when filling
+        self.disable_weights: bool = False
 
     @classmethod
     def variable_bin(cls):

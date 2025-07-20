@@ -27,7 +27,6 @@ class Histogram(HistogramBase):
         "xtitle",
         "ytitle",
         "systematics",
-        "disable_weights",
         "_bins",
         "_observable",
         "_systematics_band",
@@ -65,9 +64,6 @@ class Histogram(HistogramBase):
 
         # storage for systematics bands in nominal histogram
         self._systematics_band: dict = {} if self.systematics else None
-
-        # option for turning of weights when filling
-        self.disable_weights: bool = False
 
         # use for holding the data in from_array
         self._data_array: np.ndarray = None
