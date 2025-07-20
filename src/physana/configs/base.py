@@ -534,35 +534,53 @@ class ConfigMgr:
             self._histogram_branch_dict[name] |= self.reserve_branches(name)
         self.histograms.append(hist)
 
+    def _parse_bin(self, bin_value: int, min_value: float, max_value: float) -> list:
+        if isinstance(bin_value, list):
+            return bin_value
+        width = (max_value - min_value) / bin_value
+        return list(np.arange(min_value, max_value + width, width))
+
     def add_histogram2D(
         self,
-        name,
-        xvar,
-        yvar,
-        xbin=1,
-        xmin=-1,
-        xmax=1,
-        ybin=1,
-        ymin=-1,
-        ymax=1,
+        name: str,
+        xvar: str,
+        yvar: str,
+        xbin: int | list = 1,
+        xmin: float = -1,
+        xmax: float = 1,
+        ybin: int | list = 1,
+        ymin: float = -1,
+        ymax: float = 1,
         *args,
         **kwargs,
     ):
-        logger.info(f"adding 2D observables {name}")
+        logger.info(f"Adding 2D observable {name}")
         kwargs.setdefault("dtype", "reco")
+
+        # caching histogram branches
         self._histogram_branch_dict[name] |= self.reserve_branches(xvar)
         self._histogram_branch_dict[name] |= self.reserve_branches(yvar)
+
+        # convert variable to numexpr format
         xvar = from_root(xvar).to_numexpr()
         yvar = from_root(yvar).to_numexpr()
-        if isinstance(xbin, list) and isinstance(ybin, list):
-            bin_args = (name, xvar, yvar, xbin, ybin)
-            _histo2d = Histogram2D.variable_bin(*bin_args, *args, **kwargs)
-        else:
-            bin_args = (name, xvar, yvar, xbin, xmin, xmax, ybin, ymin, ymax)
-            _histo2d = Histogram2D(*bin_args, *args, **kwargs)
-        self.histograms2D.append(_histo2d)
 
-    add_observable2D = add_histogram2D
+        # hanlde variable binning
+        if isinstance(xbin, list) and isinstance(ybin, list):
+            bin_args = (xvar, yvar, xbin, ybin)
+            histo_constructor = Histogram2D.variable_bin
+        elif isinstance(xbin, list) or isinstance(ybin, list):
+            ybin = self._parse_bin(ybin, ymin, ymax)
+            xbin = self._parse_bin(xbin, xmin, xmax)
+            bin_args = (xvar, yvar, xbin, ybin)
+            histo_constructor = Histogram2D.variable_bin
+        else:
+            bin_args = (xvar, yvar, xbin, xmin, xmax, ybin, ymin, ymax)
+            histo_constructor = Histogram2D
+        _histo2d = histo_constructor(name, *bin_args, *args, **kwargs)
+
+        # storing the histogram
+        self.histograms2D.append(_histo2d)
 
     def append_histogram_2d(self, hist):
         if self.has_observable(hist.name):
