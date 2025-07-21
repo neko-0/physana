@@ -582,6 +582,8 @@ class ConfigMgr:
         # storing the histogram
         self.histograms2D.append(_histo2d)
 
+    add_observable2D = add_histogram2D
+
     def append_histogram_2d(self, hist):
         if self.has_observable(hist.name):
             return
