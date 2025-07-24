@@ -168,7 +168,6 @@ def combine_json_setups(json_files: Union[str, List[str]]) -> 'JSONHistSetup':
 
 def fill_config(
     config_name: str,
-    output_dir: str,
     entry_range: Optional[Tuple[int, int]] = None,
     histmaker_settings: Optional[Dict[str, Any]] = None,
 ) -> Union[str, None]:
@@ -179,8 +178,6 @@ def fill_config(
     ----------
     config_name : str
         The path to the configuration file to be opened and processed.
-    output_dir : str
-        The directory where the processed configuration will be saved.
     entry_range : Optional[Tuple[int, int]], optional
         The range of entries to be processed, by default None.
     histmaker_settings : Optional[Dict[str, Any]], optional
@@ -205,15 +202,6 @@ def fill_config(
     # Ensure there is exactly one process set in the configuration
     assert len(sub_config.process_sets) == 1
 
-    for pset in sub_config.process_sets:
-        for p in pset:
-            # Ensure there is at most one input file for each process
-            assert len(p.input_files) <= 1
-            if len(p.input_files) == 1:
-                ifile = pathlib.Path(list(p.input_files)[0]).stem.strip(".root")
-            else:
-                ifile = None
-
     # Determine entry range
     if entry_range:
         start, end = entry_range
@@ -221,13 +209,8 @@ def fill_config(
         start, end = None, None
 
     # Set up output file name based on input parameters
-    output = f"{output_dir}/output_{pset.name}_{ifile}"
-    if start is None and end is None:
-        output += ".pkl"
-    else:
-        output += f"_{start}_{end}.pkl"
-
     # If output file already exists, return its path
+    output = str(config_name).replace("input", "output")
     if pathlib.Path(output).exists():
         return output
 
@@ -360,9 +343,10 @@ def generate_config(
 
     # Define observables
     # ===================================================================
+    add_noweight_hist = json_config.others.get("add_noweight_hist", False)
     for observable in json_config.observable_list:
         setting.add_observable(**observable)
-        if json_config.others.get("add_noweight_hist", False):
+        if add_noweight_hist:
             hist = setting.histograms[-1].copy()
             hist.name += "_noweight"
             hist.disable_weights = True
@@ -370,6 +354,11 @@ def generate_config(
 
     for observable in json_config.observable2D_list:
         setting.add_observable2D(**observable)
+        if add_noweight_hist:
+            hist = setting.histograms2D[-1].copy()
+            hist.name += "_noweight"
+            hist.disable_weights = True
+            setting.append_histogram_2d(hist)
 
     setting.RAISE_TREENAME_ERROR = False
 
@@ -404,8 +393,16 @@ def preparing_jobs(
 
     prepared_jobs: Dict[str, List[Callable[[], Union[str, None]]]] = defaultdict(list)
     for name, job in jobs.items():
-        setting = generate_config(json_config, job[0], job[1], job[2])
 
+        # check if there is already a instance of ConfigMgr exists.
+        config_path = f"{json_config.out_path}/config_{name}.pkl"
+        if pathlib.Path(config_path).exists():
+            setting = ConfigMgr.open(config_path)
+        else:
+            setting = generate_config(json_config, job[0], job[1], job[2])
+            setting.save(config_path)
+
+        # check if there is already a SumWeights file
         sum_weights_file = f"{json_config.out_path}/{name}_SumWeights.txt"
         if pathlib.Path(sum_weights_file).exists():
             setting.sum_weights_file = sum_weights_file
@@ -414,23 +411,41 @@ def preparing_jobs(
                 setting, sum_weights_file, treename_match=None
             )
 
+        # split ConfigMgr to smaller ones.
+        # check if split caching is enabled.
         enable_cache_split = json_config.others.get("cache_split", False)
         enable_prepare = json_config.others.get("prepare", False)
+        split_method = json_config.others.get("split_method", False)
 
+        # check for split cache
         cache_split_file = f"{json_config.out_path}/{name}_cache_split.json"
         if not pathlib.Path(cache_split_file).exists():
             enable_cache_split = False
 
+        # use cached split or perform splitting
         if enable_cache_split:
             with open(cache_split_file) as f:
                 split_config = json.load(f)
         else:
-            split_config = split(
-                setting,
-                "entries",
-                nbatch=json_config.others.get("nbatch", 5),
-                tree_name="reco",
-            )
+            if split_method == "histograms":
+                split_config = split(setting, "histogram", True)
+            elif split_method == "histograms-files":
+
+                def split_helper(setting):
+                    for s_name, s_config in split(setting, "histogram", True):
+                        for ss_config in split(s_config, "ifile", True, 1):
+                            yield s_name, ss_config
+
+                split_config = split_helper(setting)
+            elif split_method == "entries":
+                split_config = split(
+                    setting,
+                    "entries",
+                    nbatch=json_config.others.get("nbatch", 5),
+                    tree_name="reco",
+                )
+            else:
+                raise ValueError(f"Unknown split method {split_method}")
 
         logger.info(f"Start preparing {name}")
 
@@ -438,26 +453,47 @@ def preparing_jobs(
         histmaker_settings = json_config.others.get("histmaker_settings", None)
 
         cache_split_keeper = []
-        for sub_config, start, end in tqdm(split_config, leave=False):
-            if not enable_cache_split:
-                # Make sure there is only one input file per process
-                for pset in sub_config.process_sets:
-                    for p in pset:
-                        assert len(p.input_files) <= 1
-                        if len(p.input_files) == 1:
-                            ifile = pathlib.Path(list(p.input_files)[0]).stem.strip(
-                                ".root"
-                            )
-                        else:
-                            ifile = None
-                        ifile = f"{pset.name}_{ifile}"
+        for config_package in tqdm(split_config, leave=False):
+            # unpacking split config name and ranges
+            if split_method in ["histograms", "histograms-files"]:
+                hist_split_name, sub_config = config_package
+                hist_split_name = hist_split_name.replace("/", "_")
+                start = None
+                end = None
+            elif split_method == "entries":
+                hist_split_name = ""
+                sub_config, start, end = config_package
 
-                config_name = f"{json_config.out_path}/input_{name}/input_{ifile}_{start}_{end}.pkl"
+            if not enable_cache_split:
+                path_prefix = f"{json_config.out_path}/input_{name}"
+                if split_method == "histograms":
+                    config_name = (
+                        f"{path_prefix}/input_{hist_split_name}_{start}_{end}.pkl"
+                    )
+                    cache_split_keeper.append([hist_split_name, str(config_name)])
+                else:
+                    # Make sure there is only one input file per process
+                    for pset in sub_config.process_sets:
+                        for p in pset:
+                            assert len(p.input_files) <= 1
+                            if len(p.input_files) == 1:
+                                ifile = pathlib.Path(list(p.input_files)[0]).stem.strip(
+                                    ".root"
+                                )
+                            else:
+                                ifile = None
+
+                            if hist_split_name:
+                                ifile = f"{hist_split_name}_{ifile}"
+                            else:
+                                ifile = f"{pset.name}_{ifile}"
+                    config_name = f"{path_prefix}/input_{ifile}_{start}_{end}.pkl"
+                    cache_split_keeper.append([str(config_name), start, end])
+
                 if not pathlib.Path(config_name).exists():
                     if json_config.others.get("prepare_prior_save", False):
                         sub_config.prepare()
                     config_name = sub_config.save(config_name)
-                cache_split_keeper.append([str(config_name), start, end])
             else:
                 config_name = sub_config
 
@@ -469,7 +505,6 @@ def preparing_jobs(
                 partial(
                     fill_config,
                     config_name,
-                    f"{json_config.out_path}/output_{name}/",
                     (start, end),
                     histmaker_settings,
                 )
@@ -498,6 +533,9 @@ def single_thread_job_dispatch(json_config: JSONHistSetup) -> Dict[str, bool]:
 
     # number of multiple processes for batch running
     batch_processes = json_config.others.get("batch_processes", 1)
+
+    if json_config.others.get("verbose", False):
+        set_verbose_histmaker()
 
     start_t = perf_counter()
     total_time = 0.0
