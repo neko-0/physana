@@ -162,10 +162,13 @@ class BaseAnalysisContainer:
 
     @property
     def full_name(self) -> str:
-        if self.parent is None:
+        s_parent = self.parent
+        if s_parent is None:
             return self.name
+        elif isinstance(s_parent, str):
+            return f"{s_parent}/{self.name}"
         else:
-            return f"{self.parent.full_name}/{self.name}"
+            return f"{s_parent.full_name}/{self.name}"
 
     def add_deepcopy_exclusion(self, name: str) -> None:
         self._deepcopy_exclusions.add(name)

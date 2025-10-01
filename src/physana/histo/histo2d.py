@@ -422,10 +422,13 @@ class Histogram2D(HistogramBase):
     def from_array(self, xdata, ydata, w=None, w2=None, accumulate=True):
         xdata = np.asarray(xdata)
         ydata = np.asarray(ydata)
-        if w is not None:
-            w = np.asarray(w)
-        if w2 is not None:
-            w2 = np.asarray(w2)
+        if self.disable_weights:
+            w, w2 = None, None
+        else:
+            if w is not None:
+                w = np.asarray(w)
+            if w2 is not None:
+                w2 = np.asarray(w2)
         if xdata.dtype == np.bool_:
             xdata = xdata.astype(int)
         if ydata.dtype == np.bool_:

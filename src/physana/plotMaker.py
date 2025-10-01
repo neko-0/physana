@@ -529,6 +529,7 @@ class PlotMaker(object):
         divide_binwidth=True,
         ytitles=None,
         atlas_label_pos=None,
+        hlines=None,
     ):
         logger.info("preparing canvas.")
         canvas = self.make_canvas()
@@ -699,6 +700,13 @@ class PlotMaker(object):
                     _graph.Draw("2 same")
 
             canvas.Update()
+
+        if hlines:
+            cache_line = []
+            for _y in hlines:
+                hline = RootBackend.make_line(_histo_xmin, _y, _histo_xmax, _y)
+                hline.Draw()
+                cache_line.append(hline)
 
         figfmt = figfmt.replace(" ", "")
         for pic_format in figfmt.split(","):
