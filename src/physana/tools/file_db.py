@@ -2,6 +2,8 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, Union
 
+from tqdm import tqdm
+
 from .file_metadata import FileMetaData
 
 
@@ -302,6 +304,6 @@ def generate_metadata_db(ntuple_files, output="metadata.db", max_workers=4):
     # Step 2: sequential DB insertion
     with FileSQLiteDB(output) as db:
         db.conn.execute("BEGIN")
-        for meta in metas:
+        for meta in tqdm(metas):
             db.insert_file(meta, commit=False)
         db.conn.commit()
