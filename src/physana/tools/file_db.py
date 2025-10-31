@@ -1,8 +1,6 @@
 import sqlite3
-from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any, Optional, Union
-
-from tqdm import tqdm
 
 from .file_metadata import FileMetaData
 
@@ -11,6 +9,7 @@ class FileSQLiteDB:
     def __init__(self, db_path="ntuple_metadata.db"):
         self.conn = sqlite3.connect(db_path)
         self._create_tables()
+        self.handle_duplicates = True
         self.exist_ok = False
 
     def __enter__(self):
@@ -90,9 +89,11 @@ class FileSQLiteDB:
         """
         cur = self.conn.cursor()
 
-        # Removing existing file path
-        if not self.remove_file(metadata.file_path, commit=commit):
-            return -1
+        # Check for duplication
+        if self.handle_duplicates:
+            # Removing existing file path
+            if not self.remove_file(metadata.file_path, commit=commit):
+                return -1
 
         # Insert file metadata
         insert_query = """
@@ -296,14 +297,23 @@ class FileSQLiteDB:
         return [row[0] for row in rows]
 
 
-def generate_metadata_db(ntuple_files, output="metadata.db", max_workers=4):
-    # Step 1: parallel metadata extraction
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        metas = list(executor.map(FileMetaData, ntuple_files))
-
-    # Step 2: sequential DB insertion
+def generate_metadata_db(
+    ntuple_files: list[str], output: str = "metadata.sqlite3", exist_ok: bool = False
+) -> None:
     with FileSQLiteDB(output) as db:
+        if exist_ok:
+            # handle duplicates by caching all existing file path.
+            db.handle_duplicates = False  # turn off internal check for duplication.
+            cur = db.conn.cursor()
+            cur.execute("SELECT file_path FROM file_metadata")
+            existing_files = {row[0] for row in cur.fetchall()}
+        else:
+            existing_files = set()
+
         db.conn.execute("BEGIN")
-        for meta in tqdm(metas):
-            db.insert_file(meta, commit=False)
+        for f in ntuple_files:
+            f = str(Path(f).resolve())
+            if f in existing_files:
+                continue
+            db.insert_file(FileMetaData(f), commit=False)
         db.conn.commit()

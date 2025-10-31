@@ -390,3 +390,15 @@ def check_data(files, match_info):
     tools.check_data_completeness(
         tqdm(list_of_files, leave=False), metadata_type, data_year
     )
+
+
+# =============================================================================
+# Generate ntuple metadata DB
+# =============================================================================
+@cli.command()
+@click.option("--pattern", type=str, required=True, help="pattern to glob files")
+@click.option("--output", type=str, default="metadata.db", help="output name")
+@click.option("--exist-ok/--no-exist-ok", default=False, help="skipping existing file.")
+def generate_metadata_db(pattern, output, exist_ok):
+    ntuple_files = tqdm(glob(pattern))
+    tools.generate_metadata_db(ntuple_files, output, exist_ok)
