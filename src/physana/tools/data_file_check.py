@@ -49,7 +49,7 @@ def check_data_completeness(
         if lookup not in data_year:
             continue
         nfiles[lookup] += fmd.num_executed_files
-        nevents[lookup] += fmd.num_events
+        nevents[lookup] += fmd.num_input_events
 
     for year, (expected_files, expected_events) in data_year.items():
         nfile_fail = nfiles[year] != expected_files
