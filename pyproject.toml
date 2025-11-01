@@ -41,7 +41,7 @@ dependencies = [
   'pandas',
   'pyhf[minuit]',
   'klepto',
-  'jsonnet@https://github.com/google/jsonnet/zipball/master',
+  'jsonnet',
   'rich',
   'aiofiles',
   'numba',
